@@ -1,4 +1,16 @@
-export function Header() {
+import type { ServiceStatus } from '../types/health'
+
+interface HeaderProps {
+  serviceStatus: ServiceStatus
+}
+
+const serviceStatusText: Record<ServiceStatus, string> = {
+  checking: '服务检测中',
+  online: '服务正常',
+  offline: '服务未连接',
+}
+
+export function Header({ serviceStatus }: HeaderProps) {
   return (
     <header className="app-header">
       <div className="header-content">
@@ -16,9 +28,16 @@ export function Header() {
             <p>AI 图片创作工作台</p>
           </div>
         </div>
-        <button type="button" className="history-button">
-          生成历史
-        </button>
+
+        <div className="header-actions">
+          <p className={`service-status is-${serviceStatus}`} role="status">
+            <span className="service-status-dot" aria-hidden="true" />
+            {serviceStatusText[serviceStatus]}
+          </p>
+          <button type="button" className="history-button">
+            生成历史
+          </button>
+        </div>
       </div>
     </header>
   )

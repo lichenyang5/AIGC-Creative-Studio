@@ -69,6 +69,45 @@
   transition: border-color 160ms ease, background-color 160ms ease;
 }
 
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.service-status {
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--muted-color);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.service-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #9aa3b3;
+}
+
+.service-status.is-online {
+  color: #248154;
+}
+
+.service-status.is-online .service-status-dot {
+  background: #31a46b;
+}
+
+.service-status.is-offline {
+  color: #bd3e48;
+}
+
+.service-status.is-offline .service-status-dot {
+  background: #d95662;
+}
+
 .history-button:hover {
   border-color: var(--primary-color);
   background: var(--primary-soft);
@@ -420,6 +459,14 @@ select.field-control {
     min-height: 36px;
     padding: 0 12px;
     font-size: 13px;
+  }
+
+  .header-actions {
+    gap: 10px;
+  }
+
+  .service-status {
+    font-size: 12px;
   }
 
   .workspace {
