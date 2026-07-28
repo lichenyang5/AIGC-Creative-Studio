@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import type { GenerationTask } from '../types/generationApi'
 
 interface ResultPreviewProps {
@@ -32,6 +33,42 @@ export function ResultPreview({
   refreshError,
   onRefreshTask,
 }: ResultPreviewProps) {
+  const [downloadingImageIndex, setDownloadingImageIndex] = useState<number | null>(null)
+  const [imageDownloadError, setImageDownloadError] = useState<string | null>(null)
+
+  const downloadImage = async (taskId: string, imageIndex: number) => {
+    if (downloadingImageIndex !== null) {
+      return
+    }
+
+    setDownloadingImageIndex(imageIndex)
+    setImageDownloadError(null)
+
+    try {
+      const response = await fetch(
+        `http://localhost:3001/api/generations/${taskId}/images/${imageIndex}/download`,
+      )
+
+      if (!response.ok) {
+        throw new Error('Image download failed')
+      }
+
+      const blob = await response.blob()
+      const objectUrl = URL.createObjectURL(blob)
+      const downloadLink = document.createElement('a')
+      downloadLink.href = objectUrl
+      downloadLink.download = `aigc-${taskId}-${imageIndex}.png`
+      document.body.append(downloadLink)
+      downloadLink.click()
+      downloadLink.remove()
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0)
+    } catch {
+      setImageDownloadError('下载图片失败，请稍后重试')
+    } finally {
+      setDownloadingImageIndex(null)
+    }
+  }
+
   return (
     <section className="panel preview-panel" aria-labelledby="preview-title">
       <div className="panel-heading">
@@ -77,6 +114,43 @@ export function ResultPreview({
                 {refreshError}
               </p>
             )}
+
+            {task.status === 'succeeded' && task.result?.images.length ? (
+              <div className="generated-images" aria-label="生成图片">
+                {task.result.images.map((image, index) => (
+                  <article className="generated-image-card" key={image.url}>
+                    <img
+                      src={image.url}
+                      alt={`生成任务 ${task.taskId} 的第 ${index + 1} 张图片`}
+                    />
+                    <div className="generated-image-actions">
+                      <button
+                        type="button"
+                        className="image-action-button"
+                        onClick={() => void downloadImage(task.taskId, index)}
+                        disabled={downloadingImageIndex !== null}
+                      >
+                        {downloadingImageIndex === index ? '下载中...' : '下载'}
+                      </button>
+                      <button
+                        type="button"
+                        className="image-action-button"
+                        onClick={() =>
+                          window.open(image.url, '_blank', 'noopener,noreferrer')
+                        }
+                      >
+                        新窗口查看
+                      </button>
+                    </div>
+                  </article>
+                ))}
+                {imageDownloadError && (
+                  <p className="image-download-error" role="alert">
+                    {imageDownloadError}
+                  </p>
+                )}
+              </div>
+            ) : null}
           </div>
         ) : error ? (
           <div className="error-state" role="alert">

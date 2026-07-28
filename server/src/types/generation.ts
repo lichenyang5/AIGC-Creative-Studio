@@ -26,6 +26,12 @@ export interface GenerationValidationError {
   message: string
 }
 
+export interface GenerationImage {
+  url: string
+  width?: number
+  height?: number
+}
+
 export interface GenerationTask {
   taskId: string
   status: GenerationStatus
@@ -33,7 +39,12 @@ export interface GenerationTask {
   createdAt: string
   completedAt?: string
   result?: {
-    imageUrls: string[]
+    images: GenerationImage[]
+  }
+  error?: {
+    code: string
+    message: string
+    retryable: boolean
   }
 }
 

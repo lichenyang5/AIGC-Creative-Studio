@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { Router } from 'express'
+import { WanxImageProvider } from '../providers/WanxImageProvider.js'
+import { ProviderError, type GenerateImageInput } from '../providers/types.js'
 import {
   getGenerationTask,
   saveGenerationTask,
@@ -22,6 +24,8 @@ import {
 } from '../types/generation.js'
 
 const generationsRouter = Router()
+
+type GenerationTaskError = NonNullable<GenerationTask['error']>
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -100,6 +104,77 @@ const validateGenerationRequest = (
   return errors
 }
 
+const getSafeProviderError = (cause: unknown): GenerationTaskError => {
+  if (cause instanceof ProviderError) {
+    return {
+      code: cause.code,
+      message: 'Image generation provider failed',
+      retryable: cause.retryable,
+    }
+  }
+
+  return {
+    code: 'IMAGE_GENERATION_FAILED',
+    message: 'Image generation provider failed',
+    retryable: false,
+  }
+}
+
+const runImageGeneration = async (
+  taskId: string,
+  request: GenerationRequest,
+): Promise<void> => {
+  if (process.env.ENABLE_REAL_GENERATION !== 'true') {
+    updateGenerationTask(taskId, (task) => ({
+      ...task,
+      status: 'failed',
+      completedAt: new Date().toISOString(),
+      error: {
+        code: 'REAL_GENERATION_DISABLED',
+        message: 'Real image generation is disabled',
+        retryable: false,
+      },
+    }))
+    return
+  }
+
+  const processingTask = updateGenerationTask(taskId, (task) => ({
+    ...task,
+    status: 'processing',
+  }))
+
+  if (!processingTask) {
+    return
+  }
+
+  try {
+    const provider = new WanxImageProvider()
+    const providerInput: GenerateImageInput = {
+      ...request,
+      count: 1,
+    }
+    const result = await provider.generate(providerInput)
+
+    updateGenerationTask(taskId, (task) => ({
+      ...task,
+      status: 'succeeded',
+      completedAt: new Date().toISOString(),
+      result: {
+        images: result.images,
+      },
+    }))
+  } catch (cause: unknown) {
+    const error = getSafeProviderError(cause)
+
+    updateGenerationTask(taskId, (task) => ({
+      ...task,
+      status: 'failed',
+      completedAt: new Date().toISOString(),
+      error,
+    }))
+  }
+}
+
 generationsRouter.post('/', (request, response) => {
   const body: unknown = request.body
   const errors = validateGenerationRequest(body)
@@ -143,23 +218,85 @@ generationsRouter.post('/', (request, response) => {
 
   saveGenerationTask(generationTask)
 
-  setTimeout(() => {
-    updateGenerationTask(generationTask.taskId, (task) => ({
-      ...task,
-      status: 'processing',
-    }))
-  }, 1000)
-
-  setTimeout(() => {
-    updateGenerationTask(generationTask.taskId, (task) => ({
-      ...task,
-      status: 'succeeded',
-      completedAt: new Date().toISOString(),
-      result: { imageUrls: [] },
-    }))
-  }, 4000)
-
   response.status(202).json(acceptedResponse)
+  void runImageGeneration(generationTask.taskId, generationRequest)
+})
+
+generationsRouter.get('/:taskId/images/:imageIndex/download', async (request, response) => {
+  const { taskId, imageIndex } = request.params
+
+  if (!/^(0|[1-9]\d*)$/.test(imageIndex)) {
+    response.status(400).json({
+      success: false,
+      message: 'Image index must be a non-negative integer',
+    })
+    return
+  }
+
+  const index = Number(imageIndex)
+  if (!Number.isSafeInteger(index)) {
+    response.status(400).json({
+      success: false,
+      message: 'Image index must be a non-negative integer',
+    })
+    return
+  }
+
+  const generationTask = getGenerationTask(taskId)
+
+  if (!generationTask) {
+    response.status(404).json({
+      success: false,
+      message: 'Generation task not found',
+    })
+    return
+  }
+
+  if (generationTask.status !== 'succeeded') {
+    response.status(409).json({
+      success: false,
+      message: 'Generation task has not succeeded',
+    })
+    return
+  }
+
+  const image = generationTask.result?.images[index]
+  if (!image) {
+    response.status(404).json({
+      success: false,
+      message: 'Generated image not found',
+    })
+    return
+  }
+
+  try {
+    const upstreamResponse = await fetch(image.url)
+
+    if (!upstreamResponse.ok) {
+      response.status(502).json({
+        success: false,
+        message: 'Unable to download generated image',
+      })
+      return
+    }
+
+    const imageBuffer = Buffer.from(await upstreamResponse.arrayBuffer())
+    const contentType = upstreamResponse.headers.get('content-type') || 'image/png'
+
+    response
+      .status(200)
+      .set({
+        'Content-Type': contentType,
+        'Content-Disposition': `attachment; filename="aigc-${taskId}-${index}.png"`,
+        'Cache-Control': 'no-store',
+      })
+      .send(imageBuffer)
+  } catch {
+    response.status(502).json({
+      success: false,
+      message: 'Unable to download generated image',
+    })
+  }
 })
 
 generationsRouter.get('/:taskId', (request, response) => {

@@ -21,6 +21,12 @@ export interface GenerationRequestPayload {
   style: GenerationStyle
 }
 
+export interface GeneratedImage {
+  url: string
+  width?: number
+  height?: number
+}
+
 export interface GenerationTask {
   taskId: string
   status: GenerationTaskStatus
@@ -28,7 +34,7 @@ export interface GenerationTask {
   createdAt: string
   completedAt?: string
   result?: {
-    imageUrls: string[]
+    images: GeneratedImage[]
   }
 }
 
