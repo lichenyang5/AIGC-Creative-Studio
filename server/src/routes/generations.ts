@@ -3,6 +3,7 @@ import { Router } from 'express'
 import {
   getGenerationTask,
   saveGenerationTask,
+  updateGenerationTask,
 } from '../store/generationStore.js'
 import {
   aspectRatios,
@@ -141,6 +142,22 @@ generationsRouter.post('/', (request, response) => {
   }
 
   saveGenerationTask(generationTask)
+
+  setTimeout(() => {
+    updateGenerationTask(generationTask.taskId, (task) => ({
+      ...task,
+      status: 'processing',
+    }))
+  }, 1000)
+
+  setTimeout(() => {
+    updateGenerationTask(generationTask.taskId, (task) => ({
+      ...task,
+      status: 'succeeded',
+      completedAt: new Date().toISOString(),
+      result: { imageUrls: [] },
+    }))
+  }, 4000)
 
   response.status(202).json(acceptedResponse)
 })

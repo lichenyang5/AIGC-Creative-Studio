@@ -10,7 +10,7 @@ export const generationStyles = [
 export type AspectRatio = (typeof aspectRatios)[number]
 export type GenerationCount = (typeof generationCounts)[number]
 export type GenerationStyle = (typeof generationStyles)[number]
-export type GenerationStatus = 'pending'
+export type GenerationStatus = 'pending' | 'processing' | 'succeeded' | 'failed'
 
 export interface GenerationRequest {
   prompt: string
@@ -31,6 +31,10 @@ export interface GenerationTask {
   status: GenerationStatus
   request: GenerationRequest
   createdAt: string
+  completedAt?: string
+  result?: {
+    imageUrls: string[]
+  }
 }
 
 export interface GenerationAcceptedResponse {
