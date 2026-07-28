@@ -22,13 +22,19 @@ import {
   type AspectRatio,
   type GenerationAcceptedResponse,
   type GenerationCount,
+  type GenerationListQuery,
+  type GenerationListQueryValidationError,
+  type GenerationListQueryValidationErrorResponse,
+  type GenerationListResponse,
   type GenerationRequest,
+  type GenerationStatus,
   type GenerationStyle,
   type GenerationTask,
   type GenerationTaskNotFoundResponse,
   type GenerationTaskResponse,
   type GenerationValidationError,
   type GenerationValidationErrorResponse,
+  generationStatuses,
 } from '../types/generation.js'
 
 const generationsRouter = Router()
@@ -118,6 +124,66 @@ const validateGenerationRequest = (
   }
 
   return errors
+}
+
+const parseGenerationListQuery = (
+  query: Record<string, unknown>,
+): { query?: GenerationListQuery; errors: GenerationListQueryValidationError[] } => {
+  const errors: GenerationListQueryValidationError[] = []
+  const status = query.status
+  const limit = query.limit
+  const offset = query.offset
+  let parsedStatus: GenerationStatus | undefined
+
+  if (status !== undefined) {
+    if (includesValue(generationStatuses, status)) {
+      parsedStatus = status
+    } else {
+      errors.push({
+        field: 'status',
+        message: 'Status must be one of: succeeded, failed, pending, processing',
+      })
+    }
+  }
+
+  const parsedLimit =
+    limit === undefined
+      ? 20
+      : typeof limit === 'string' && /^\d+$/.test(limit)
+        ? Number(limit)
+        : NaN
+  if (!Number.isSafeInteger(parsedLimit) || parsedLimit < 1 || parsedLimit > 50) {
+    errors.push({
+      field: 'limit',
+      message: 'Limit must be an integer between 1 and 50',
+    })
+  }
+
+  const parsedOffset =
+    offset === undefined
+      ? 0
+      : typeof offset === 'string' && /^\d+$/.test(offset)
+        ? Number(offset)
+        : NaN
+  if (!Number.isSafeInteger(parsedOffset) || parsedOffset < 0) {
+    errors.push({
+      field: 'offset',
+      message: 'Offset must be a non-negative integer',
+    })
+  }
+
+  if (errors.length > 0) {
+    return { errors }
+  }
+
+  return {
+    query: {
+      ...(parsedStatus === undefined ? {} : { status: parsedStatus }),
+      limit: parsedLimit,
+      offset: parsedOffset,
+    },
+    errors,
+  }
 }
 
 const getSafeProviderError = (cause: unknown): GenerationTaskError => {
@@ -251,6 +317,42 @@ generationsRouter.post('/', async (request, response) => {
 
   response.status(202).json(acceptedResponse)
   void runImageGeneration(generationTask.taskId, generationRequest)
+})
+
+generationsRouter.get('/', (request, response) => {
+  const { query, errors } = parseGenerationListQuery(request.query)
+
+  if (!query) {
+    const errorResponse: GenerationListQueryValidationErrorResponse = {
+      success: false,
+      message: 'Invalid query parameters',
+      errors,
+    }
+
+    response.status(400).json(errorResponse)
+    return
+  }
+
+  const filteredTasks = getAllGenerationTasks()
+    .filter((task) => query.status === undefined || task.status === query.status)
+    .sort((firstTask, secondTask) =>
+      secondTask.createdAt.localeCompare(firstTask.createdAt),
+    )
+  const total = filteredTasks.length
+  const items = filteredTasks.slice(query.offset, query.offset + query.limit)
+
+  const listResponse: GenerationListResponse = {
+    success: true,
+    data: {
+      items,
+      total,
+      limit: query.limit,
+      offset: query.offset,
+      hasMore: query.offset + items.length < total,
+    },
+  }
+
+  response.status(200).json(listResponse)
 })
 
 generationsRouter.get('/:taskId/images/:imageIndex/download', async (request, response) => {

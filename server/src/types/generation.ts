@@ -6,11 +6,17 @@ export const generationStyles = [
   'cyberpunk',
   'watercolor',
 ] as const
+export const generationStatuses = [
+  'pending',
+  'processing',
+  'succeeded',
+  'failed',
+] as const
 
 export type AspectRatio = (typeof aspectRatios)[number]
 export type GenerationCount = (typeof generationCounts)[number]
 export type GenerationStyle = (typeof generationStyles)[number]
-export type GenerationStatus = 'pending' | 'processing' | 'succeeded' | 'failed'
+export type GenerationStatus = (typeof generationStatuses)[number]
 
 export interface GenerationRequest {
   prompt: string
@@ -72,4 +78,32 @@ export interface GenerationTaskResponse {
 export interface GenerationTaskNotFoundResponse {
   success: false
   message: 'Generation task not found'
+}
+
+export interface GenerationListQuery {
+  status?: GenerationStatus
+  limit: number
+  offset: number
+}
+
+export interface GenerationListQueryValidationError {
+  field: keyof GenerationListQuery
+  message: string
+}
+
+export interface GenerationListQueryValidationErrorResponse {
+  success: false
+  message: 'Invalid query parameters'
+  errors: GenerationListQueryValidationError[]
+}
+
+export interface GenerationListResponse {
+  success: true
+  data: {
+    items: GenerationTask[]
+    total: number
+    limit: number
+    offset: number
+    hasMore: boolean
+  }
 }
