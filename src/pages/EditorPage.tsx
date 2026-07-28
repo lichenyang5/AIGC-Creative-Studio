@@ -35,6 +35,10 @@ export function EditorPage() {
   const [blackWhiteIntensity, setBlackWhiteIntensity] = useState(0)
   const [gradientPosition, setGradientPosition] = useState(50)
   const [gradientWidth, setGradientWidth] = useState(15)
+  const [rainAmount, setRainAmount] = useState(80)
+  const [rainLength, setRainLength] = useState(25)
+  const [rainAngle, setRainAngle] = useState(-15)
+  const [rainOpacity, setRainOpacity] = useState(40)
   const [isCanvasReady, setIsCanvasReady] = useState(false)
   const [isExporting, setIsExporting] = useState(false)
   const [exportMessage, setExportMessage] = useState<string | null>(null)
@@ -46,6 +50,10 @@ export function EditorPage() {
     setBlackWhiteIntensity(0)
     setGradientPosition(50)
     setGradientWidth(15)
+    setRainAmount(80)
+    setRainLength(25)
+    setRainAngle(-15)
+    setRainOpacity(40)
   }, [])
 
   const handleCanvasLoadStateChange = useCallback((isReady: boolean) => {
@@ -61,6 +69,10 @@ export function EditorPage() {
     setBlackWhiteIntensity(0)
     setGradientPosition(50)
     setGradientWidth(15)
+    setRainAmount(80)
+    setRainLength(25)
+    setRainAngle(-15)
+    setRainOpacity(40)
     setIsCanvasReady(false)
     setExportMessage(null)
   }, [taskId, imageIndexParam])
@@ -224,9 +236,61 @@ export function EditorPage() {
               />
             </section>
           )}
-          <button type="button" disabled>
-            雨滴 <span>即将支持</span>
+          <button
+            type="button"
+            className={editMode === 'rain' ? 'is-active' : ''}
+            onClick={() => setEditMode('rain')}
+          >
+            雨滴
           </button>
+          {editMode === 'rain' && (
+            <section className="filter-adjustments" aria-label="雨滴效果调整">
+              <label htmlFor="rain-amount">
+                雨量 <output>{rainAmount}</output>
+              </label>
+              <input
+                id="rain-amount"
+                type="range"
+                min="10"
+                max="200"
+                value={rainAmount}
+                onChange={(event) => setRainAmount(Number(event.target.value))}
+              />
+              <label htmlFor="rain-length">
+                雨滴长度 <output>{rainLength}</output>
+              </label>
+              <input
+                id="rain-length"
+                type="range"
+                min="5"
+                max="60"
+                value={rainLength}
+                onChange={(event) => setRainLength(Number(event.target.value))}
+              />
+              <label htmlFor="rain-angle">
+                倾斜角度 <output>{rainAngle}°</output>
+              </label>
+              <input
+                id="rain-angle"
+                type="range"
+                min="-45"
+                max="45"
+                value={rainAngle}
+                onChange={(event) => setRainAngle(Number(event.target.value))}
+              />
+              <label htmlFor="rain-opacity">
+                透明度 <output>{rainOpacity}%</output>
+              </label>
+              <input
+                id="rain-opacity"
+                type="range"
+                min="10"
+                max="80"
+                value={rainOpacity}
+                onChange={(event) => setRainOpacity(Number(event.target.value))}
+              />
+            </section>
+          )}
           <button
             type="button"
             className={editMode === 'gradient' ? 'is-active' : ''}
@@ -281,6 +345,11 @@ export function EditorPage() {
             blackWhiteIntensity={blackWhiteIntensity}
             gradientPosition={gradientPosition}
             gradientWidth={gradientWidth}
+            rainAmount={rainAmount}
+            rainLength={rainLength}
+            rainAngle={rainAngle}
+            rainOpacity={rainOpacity}
+            rainSeed={`${task.taskId}-${imageIndex}`}
             onGradientPositionChange={handleGradientPositionChange}
             onImageLoad={handleImageLoad}
             onLoadStateChange={handleCanvasLoadStateChange}

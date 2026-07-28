@@ -14,6 +14,11 @@ interface ImageCanvasProps {
   blackWhiteIntensity: number
   gradientPosition: number
   gradientWidth: number
+  rainAmount: number
+  rainLength: number
+  rainAngle: number
+  rainOpacity: number
+  rainSeed: string
   onGradientPositionChange: (position: number) => void
   onImageLoad: () => void
   onLoadStateChange: (isReady: boolean) => void
@@ -23,13 +28,55 @@ export interface ImageCanvasHandle {
   exportImage: () => Promise<Blob>
 }
 
-export type ImageEditMode = 'original' | 'grayscale' | 'gradient'
+export type ImageEditMode = 'original' | 'grayscale' | 'gradient' | 'rain'
 
 type GradientOverlayStyle = CSSProperties & {
   '--gradient-position': string
 }
 
 const clampPercentage = (value: number): number => Math.min(Math.max(value, 0), 100)
+
+interface RainDrop {
+  x: number
+  y: number
+  lengthFactor: number
+  widthFactor: number
+  opacityFactor: number
+}
+
+const createSeededRandom = (seed: string): (() => number) => {
+  let state = 2166136261
+
+  for (let index = 0; index < seed.length; index += 1) {
+    state ^= seed.charCodeAt(index)
+    state = Math.imul(state, 16777619)
+  }
+
+  return () => {
+    state += 0x6d2b79f5
+    let value = state
+    value = Math.imul(value ^ (value >>> 15), value | 1)
+    value ^= value + Math.imul(value ^ (value >>> 7), value | 61)
+    return ((value ^ (value >>> 14)) >>> 0) / 4294967296
+  }
+}
+
+const createRainDrops = (seed: string, amount: number): RainDrop[] => {
+  const random = createSeededRandom(seed)
+  const drops: RainDrop[] = []
+
+  for (let index = 0; index < amount; index += 1) {
+    drops.push({
+      x: random(),
+      y: random(),
+      lengthFactor: 0.7 + random() * 0.6,
+      widthFactor: 0.75 + random() * 0.5,
+      opacityFactor: 0.7 + random() * 0.5,
+    })
+  }
+
+  return drops
+}
 
 export const ImageCanvas = forwardRef<ImageCanvasHandle, ImageCanvasProps>(
   function ImageCanvas({
@@ -39,6 +86,11 @@ export const ImageCanvas = forwardRef<ImageCanvasHandle, ImageCanvasProps>(
   blackWhiteIntensity,
   gradientPosition,
   gradientWidth,
+  rainAmount,
+  rainLength,
+  rainAngle,
+  rainOpacity,
+  rainSeed,
   onGradientPositionChange,
   onImageLoad,
   onLoadStateChange,
@@ -46,6 +98,7 @@ export const ImageCanvas = forwardRef<ImageCanvasHandle, ImageCanvasProps>(
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const imageRef = useRef<HTMLImageElement | null>(null)
   const originalImageDataRef = useRef<ImageData | null>(null)
+  const rainDropsRef = useRef<RainDrop[]>([])
   const dragPointerIdRef = useRef<number | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -83,6 +136,10 @@ export const ImageCanvas = forwardRef<ImageCanvasHandle, ImageCanvasProps>(
         canvas.width,
         canvas.height,
       )
+      rainDropsRef.current = createRainDrops(
+        `${rainSeed}:${canvas.width}x${canvas.height}`,
+        200,
+      )
       setImageVersion((current) => current + 1)
       onImageLoad()
       onLoadStateChange(true)
@@ -108,8 +165,9 @@ export const ImageCanvas = forwardRef<ImageCanvasHandle, ImageCanvasProps>(
         imageRef.current = null
       }
       originalImageDataRef.current = null
+      rainDropsRef.current = []
     }
-  }, [imageUrl, onImageLoad, onLoadStateChange])
+  }, [imageUrl, onImageLoad, onLoadStateChange, rainSeed])
 
   useEffect(
     () => () => {
@@ -133,6 +191,49 @@ export const ImageCanvas = forwardRef<ImageCanvasHandle, ImageCanvasProps>(
 
     if (mode === 'original') {
       context.putImageData(originalImageData, 0, 0)
+      return
+    }
+
+    if (mode === 'rain') {
+      const imageScale = Math.max(
+        0.7,
+        Math.min(1.8, Math.max(canvas.width, canvas.height) / 1024),
+      )
+      const lineLength = Math.max(1, rainLength * imageScale)
+      const angle = (Math.min(Math.max(rainAngle, -45), 45) * Math.PI) / 180
+      const horizontalOffset = Math.sin(angle)
+      const verticalOffset = Math.cos(angle)
+      const opacity = Math.min(Math.max(rainOpacity, 10), 80) / 100
+      const amount = Math.min(Math.max(Math.round(rainAmount), 10), 200)
+
+      context.putImageData(originalImageData, 0, 0)
+      context.save()
+      context.globalCompositeOperation = 'source-over'
+      context.lineCap = 'round'
+      context.strokeStyle = '#d9efff'
+
+      for (let index = 0; index < amount; index += 1) {
+        const drop = rainDropsRef.current[index]
+        if (!drop) {
+          break
+        }
+
+        const startX = drop.x * canvas.width
+        const startY = drop.y * canvas.height
+        const currentLength = lineLength * drop.lengthFactor
+
+        context.globalAlpha = opacity * drop.opacityFactor
+        context.lineWidth = Math.max(1, imageScale * drop.widthFactor)
+        context.beginPath()
+        context.moveTo(startX, startY)
+        context.lineTo(
+          startX + horizontalOffset * currentLength,
+          startY + verticalOffset * currentLength,
+        )
+        context.stroke()
+      }
+
+      context.restore()
       return
     }
 
@@ -202,6 +303,10 @@ export const ImageCanvas = forwardRef<ImageCanvasHandle, ImageCanvasProps>(
     imageUrl,
     imageVersion,
     mode,
+    rainAmount,
+    rainAngle,
+    rainLength,
+    rainOpacity,
   ])
 
   useImperativeHandle(
