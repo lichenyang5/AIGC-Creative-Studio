@@ -784,6 +784,20 @@ select.field-control {
   overflow: hidden;
 }
 
+.image-canvas-wrap {
+  position: relative;
+  min-width: 0;
+  max-width: 100%;
+  max-height: 100%;
+  display: flex;
+}
+
+.image-canvas-wrap.is-gradient-mode {
+  cursor: col-resize;
+  touch-action: none;
+  user-select: none;
+}
+
 .image-canvas {
   max-width: 100%;
   max-height: 100%;
@@ -793,6 +807,48 @@ select.field-control {
 
 .image-canvas.is-hidden {
   display: none;
+}
+
+.gradient-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.gradient-divider {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: var(--gradient-position);
+  width: 1px;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 0 0 1px rgba(26, 31, 42, 0.35);
+  transform: translateX(-50%);
+}
+
+.gradient-handle {
+  position: absolute;
+  top: 50%;
+  left: var(--gradient-position);
+  width: 18px;
+  height: 18px;
+  border: 2px solid #ffffff;
+  border-radius: 50%;
+  background: var(--primary-color);
+  box-shadow: 0 2px 8px rgba(23, 28, 45, 0.35);
+  cursor: col-resize;
+  pointer-events: auto;
+  transform: translate(-50%, -50%);
+}
+
+.gradient-handle:hover,
+.gradient-handle:active {
+  background: var(--primary-hover);
+}
+
+.gradient-handle:focus-visible {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 3px;
 }
 
 .canvas-message {

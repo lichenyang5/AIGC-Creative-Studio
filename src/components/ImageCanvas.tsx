@@ -5,6 +5,7 @@ import {
   useRef,
   useState,
 } from 'react'
+import type { CSSProperties, KeyboardEvent, PointerEvent } from 'react'
 
 interface ImageCanvasProps {
   imageUrl: string
@@ -13,6 +14,7 @@ interface ImageCanvasProps {
   blackWhiteIntensity: number
   gradientPosition: number
   gradientWidth: number
+  onGradientPositionChange: (position: number) => void
   onImageLoad: () => void
   onLoadStateChange: (isReady: boolean) => void
 }
@@ -23,6 +25,12 @@ export interface ImageCanvasHandle {
 
 export type ImageEditMode = 'original' | 'grayscale' | 'gradient'
 
+type GradientOverlayStyle = CSSProperties & {
+  '--gradient-position': string
+}
+
+const clampPercentage = (value: number): number => Math.min(Math.max(value, 0), 100)
+
 export const ImageCanvas = forwardRef<ImageCanvasHandle, ImageCanvasProps>(
   function ImageCanvas({
   imageUrl,
@@ -31,12 +39,14 @@ export const ImageCanvas = forwardRef<ImageCanvasHandle, ImageCanvasProps>(
   blackWhiteIntensity,
   gradientPosition,
   gradientWidth,
+  onGradientPositionChange,
   onImageLoad,
   onLoadStateChange,
 }, ref) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const imageRef = useRef<HTMLImageElement | null>(null)
   const originalImageDataRef = useRef<ImageData | null>(null)
+  const dragPointerIdRef = useRef<number | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [imageVersion, setImageVersion] = useState(0)
@@ -100,6 +110,13 @@ export const ImageCanvas = forwardRef<ImageCanvasHandle, ImageCanvasProps>(
       originalImageDataRef.current = null
     }
   }, [imageUrl, onImageLoad, onLoadStateChange])
+
+  useEffect(
+    () => () => {
+      dragPointerIdRef.current = null
+    },
+    [],
+  )
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -212,15 +229,114 @@ export const ImageCanvas = forwardRef<ImageCanvasHandle, ImageCanvasProps>(
     [isLoading, loadError],
   )
 
+  const updateGradientPositionFromPointer = (clientX: number): void => {
+    const canvas = canvasRef.current
+
+    if (!canvas) {
+      return
+    }
+
+    const bounds = canvas.getBoundingClientRect()
+    if (bounds.width === 0) {
+      return
+    }
+
+    const position = ((clientX - bounds.left) / bounds.width) * 100
+    onGradientPositionChange(Math.round(clampPercentage(position)))
+  }
+
+  const handlePointerDown = (event: PointerEvent<HTMLDivElement>): void => {
+    if (mode !== 'gradient') {
+      return
+    }
+
+    dragPointerIdRef.current = event.pointerId
+    event.currentTarget.setPointerCapture(event.pointerId)
+    event.preventDefault()
+    updateGradientPositionFromPointer(event.clientX)
+  }
+
+  const handlePointerMove = (event: PointerEvent<HTMLDivElement>): void => {
+    if (dragPointerIdRef.current !== event.pointerId) {
+      return
+    }
+
+    event.preventDefault()
+    updateGradientPositionFromPointer(event.clientX)
+  }
+
+  const finishPointerDrag = (event: PointerEvent<HTMLDivElement>): void => {
+    if (dragPointerIdRef.current !== event.pointerId) {
+      return
+    }
+
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId)
+    }
+    dragPointerIdRef.current = null
+  }
+
+  const handleGradientHandleKeyDown = (
+    event: KeyboardEvent<HTMLDivElement>,
+  ): void => {
+    const step = event.shiftKey ? 5 : 1
+    let nextPosition: number | null = null
+
+    if (event.key === 'ArrowLeft') {
+      nextPosition = gradientPosition - step
+    }
+    if (event.key === 'ArrowRight') {
+      nextPosition = gradientPosition + step
+    }
+
+    if (nextPosition !== null) {
+      event.preventDefault()
+      onGradientPositionChange(clampPercentage(nextPosition))
+    }
+  }
+
+  const gradientOverlayStyle: GradientOverlayStyle = {
+    '--gradient-position': `${gradientPosition}%`,
+  }
+  const isGradientOverlayVisible =
+    mode === 'gradient' && !isLoading && !loadError
+
   return (
     <div className="image-canvas-stage">
       {isLoading && <p className="canvas-message" role="status">正在加载图片...</p>}
       {loadError && <p className="canvas-message canvas-error" role="alert">{loadError}</p>}
-      <canvas
-        ref={canvasRef}
-        className={isLoading || loadError ? 'image-canvas is-hidden' : 'image-canvas'}
-        aria-label={alt}
-      />
+      <div
+        className={
+          isGradientOverlayVisible
+            ? 'image-canvas-wrap is-gradient-mode'
+            : 'image-canvas-wrap'
+        }
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={finishPointerDrag}
+        onPointerCancel={finishPointerDrag}
+      >
+        <canvas
+          ref={canvasRef}
+          className={isLoading || loadError ? 'image-canvas is-hidden' : 'image-canvas'}
+          aria-label={alt}
+        />
+        {isGradientOverlayVisible && (
+          <div className="gradient-overlay" style={gradientOverlayStyle}>
+            <div className="gradient-divider" aria-hidden="true" />
+            <div
+              className="gradient-handle"
+              role="slider"
+              tabIndex={0}
+              aria-label="灰度渐变位置"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={Math.round(gradientPosition)}
+              onKeyDown={handleGradientHandleKeyDown}
+            />
+          </div>
+        )}
+      </div>
     </div>
   )
   },

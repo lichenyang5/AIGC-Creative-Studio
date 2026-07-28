@@ -52,6 +52,10 @@ export function EditorPage() {
     setIsCanvasReady(isReady)
   }, [])
 
+  const handleGradientPositionChange = useCallback((position: number) => {
+    setGradientPosition(position)
+  }, [])
+
   useEffect(() => {
     setEditMode('original')
     setBlackWhiteIntensity(0)
@@ -228,8 +232,6 @@ export function EditorPage() {
             className={editMode === 'gradient' ? 'is-active' : ''}
             onClick={() => {
               setEditMode('gradient')
-              setGradientPosition(50)
-              setGradientWidth(15)
             }}
           >
             灰度渐变
@@ -279,6 +281,7 @@ export function EditorPage() {
             blackWhiteIntensity={blackWhiteIntensity}
             gradientPosition={gradientPosition}
             gradientWidth={gradientWidth}
+            onGradientPositionChange={handleGradientPositionChange}
             onImageLoad={handleImageLoad}
             onLoadStateChange={handleCanvasLoadStateChange}
           />
