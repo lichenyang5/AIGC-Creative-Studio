@@ -266,6 +266,12 @@ select.field-control {
   transform: translateY(1px);
 }
 
+.generate-button:disabled {
+  background: #8f9ae3;
+  cursor: not-allowed;
+  transform: none;
+}
+
 .static-notice {
   margin: -6px 0 0;
   padding: 10px 12px;
@@ -302,6 +308,41 @@ select.field-control {
   max-width: 300px;
   padding: 32px;
   text-align: center;
+}
+
+.loading-state {
+  max-width: 300px;
+  padding: 32px;
+  text-align: center;
+}
+
+.loading-spinner {
+  width: 52px;
+  height: 52px;
+  margin: 0 auto 20px;
+  display: block;
+  border: 4px solid #dfe3fb;
+  border-top-color: var(--primary-color);
+  border-radius: 50%;
+  animation: loading-spin 800ms linear infinite;
+}
+
+.loading-state h3 {
+  margin: 0;
+  color: var(--heading-color);
+  font-size: 18px;
+}
+
+.loading-state p {
+  margin: 8px 0 0;
+  color: var(--muted-color);
+  font-size: 14px;
+}
+
+@keyframes loading-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .placeholder-icon {

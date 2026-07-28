@@ -17,10 +17,20 @@ const initialFormData: GenerationFormData = {
 function App() {
   const [formData, setFormData] = useState(initialFormData)
   const [showNotice, setShowNotice] = useState(false)
+  const [isGenerating, setIsGenerating] = useState(false)
 
   const handleSubmit = () => {
+    if (isGenerating) {
+      return
+    }
+
     console.log('AIGC generation form:', formData)
     setShowNotice(true)
+    setIsGenerating(true)
+
+    window.setTimeout(() => {
+      setIsGenerating(false)
+    }, 2000)
   }
 
   return (
@@ -32,8 +42,9 @@ function App() {
           onChange={setFormData}
           onSubmit={handleSubmit}
           showNotice={showNotice}
+          isGenerating={isGenerating}
         />
-        <ResultPreview />
+        <ResultPreview isGenerating={isGenerating} />
       </main>
     </div>
   )

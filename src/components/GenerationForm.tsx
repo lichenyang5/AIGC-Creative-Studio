@@ -11,6 +11,7 @@ interface GenerationFormProps {
   onChange: Dispatch<SetStateAction<GenerationFormData>>
   onSubmit: () => void
   showNotice: boolean
+  isGenerating: boolean
 }
 
 export function GenerationForm({
@@ -18,6 +19,7 @@ export function GenerationForm({
   onChange,
   onSubmit,
   showNotice,
+  isGenerating,
 }: GenerationFormProps) {
   const updateField = <Key extends keyof GenerationFormData>(
     key: Key,
@@ -154,8 +156,8 @@ export function GenerationForm({
           </div>
         </div>
 
-        <button className="generate-button" type="submit">
-          开始生成
+        <button className="generate-button" type="submit" disabled={isGenerating}>
+          {isGenerating ? '生成中...' : '开始生成'}
         </button>
 
         {showNotice && (
