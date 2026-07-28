@@ -1,6 +1,9 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { ImageCanvas } from '../components/ImageCanvas'
+import {
+  ImageCanvas,
+  type ImageCanvasHandle,
+} from '../components/ImageCanvas'
 import { createApiUrl } from '../config/api'
 import type {
   GenerationStyle,
@@ -29,6 +32,10 @@ export function EditorPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [isBlackWhiteActive, setIsBlackWhiteActive] = useState(false)
   const [blackWhiteIntensity, setBlackWhiteIntensity] = useState(0)
+  const [isCanvasReady, setIsCanvasReady] = useState(false)
+  const [isExporting, setIsExporting] = useState(false)
+  const [exportMessage, setExportMessage] = useState<string | null>(null)
+  const imageCanvasRef = useRef<ImageCanvasHandle>(null)
   const imageIndex = isValidImageIndex(imageIndexParam) ? Number(imageIndexParam) : null
 
   const handleImageLoad = useCallback(() => {
@@ -36,9 +43,15 @@ export function EditorPage() {
     setBlackWhiteIntensity(0)
   }, [])
 
+  const handleCanvasLoadStateChange = useCallback((isReady: boolean) => {
+    setIsCanvasReady(isReady)
+  }, [])
+
   useEffect(() => {
     setIsBlackWhiteActive(false)
     setBlackWhiteIntensity(0)
+    setIsCanvasReady(false)
+    setExportMessage(null)
   }, [taskId, imageIndexParam])
 
   useEffect(() => {
@@ -123,6 +136,32 @@ export function EditorPage() {
 
   const imageUrl = image.url.startsWith('/') ? createApiUrl(image.url) : image.url
 
+  const handleExport = async () => {
+    if (isExporting || !isCanvasReady || !imageCanvasRef.current) {
+      return
+    }
+
+    setIsExporting(true)
+    setExportMessage(null)
+
+    try {
+      const blob = await imageCanvasRef.current.exportImage()
+      const objectUrl = URL.createObjectURL(blob)
+      const downloadLink = document.createElement('a')
+      downloadLink.href = objectUrl
+      downloadLink.download = `aigc-edited-${task.taskId}-${imageIndex}.png`
+      document.body.append(downloadLink)
+      downloadLink.click()
+      downloadLink.remove()
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0)
+      setExportMessage('图片已导出')
+    } catch {
+      setExportMessage('图片导出失败，请重试')
+    } finally {
+      setIsExporting(false)
+    }
+  }
+
   return (
     <main className="editor-page">
       <div className="editor-heading">
@@ -130,7 +169,20 @@ export function EditorPage() {
           <h2>图片编辑器</h2>
           <p>当前阶段仅提供原图预览</p>
         </div>
-        <Link className="library-create-link" to="/library">返回生成库</Link>
+        <div className="editor-actions">
+          <button
+            className="export-image-button"
+            type="button"
+            onClick={() => void handleExport()}
+            disabled={!isCanvasReady || isExporting}
+          >
+            {isExporting ? '导出中...' : '导出图片'}
+          </button>
+          <Link className="library-create-link" to="/library">返回生成库</Link>
+          {exportMessage && (
+            <p className="export-message" role="status">{exportMessage}</p>
+          )}
+        </div>
       </div>
 
       <div className="editor-layout">
@@ -179,12 +231,14 @@ export function EditorPage() {
 
         <section className="editor-canvas-panel" aria-label="图片画布">
           <ImageCanvas
+            ref={imageCanvasRef}
             imageUrl={imageUrl}
             alt={`生成任务 ${task.taskId} 的第 ${imageIndex + 1} 张图片`}
             blackWhiteIntensity={
               isBlackWhiteActive ? blackWhiteIntensity : 0
             }
             onImageLoad={handleImageLoad}
+            onLoadStateChange={handleCanvasLoadStateChange}
           />
         </section>
 

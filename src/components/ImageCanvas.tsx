@@ -1,18 +1,31 @@
-import { useEffect, useRef, useState } from 'react'
+import {
+  forwardRef,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+} from 'react'
 
 interface ImageCanvasProps {
   imageUrl: string
   alt: string
   blackWhiteIntensity: number
   onImageLoad: () => void
+  onLoadStateChange: (isReady: boolean) => void
 }
 
-export function ImageCanvas({
+export interface ImageCanvasHandle {
+  exportImage: () => Promise<Blob>
+}
+
+export const ImageCanvas = forwardRef<ImageCanvasHandle, ImageCanvasProps>(
+  function ImageCanvas({
   imageUrl,
   alt,
   blackWhiteIntensity,
   onImageLoad,
-}: ImageCanvasProps) {
+  onLoadStateChange,
+}, ref) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const imageRef = useRef<HTMLImageElement | null>(null)
   const originalImageDataRef = useRef<ImageData | null>(null)
@@ -26,6 +39,7 @@ export function ImageCanvas({
 
     imageRef.current = image
     originalImageDataRef.current = null
+    onLoadStateChange(false)
     image.crossOrigin = 'anonymous'
     image.onload = () => {
       if (!isActive || !canvasRef.current) {
@@ -53,11 +67,13 @@ export function ImageCanvas({
       )
       setImageVersion((current) => current + 1)
       onImageLoad()
+      onLoadStateChange(true)
       setIsLoading(false)
     }
     image.onerror = () => {
       if (isActive) {
         setLoadError('图片加载失败，请返回生成库后重试')
+        onLoadStateChange(false)
         setIsLoading(false)
       }
     }
@@ -75,7 +91,7 @@ export function ImageCanvas({
       }
       originalImageDataRef.current = null
     }
-  }, [imageUrl, onImageLoad])
+  }, [imageUrl, onImageLoad, onLoadStateChange])
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -115,6 +131,31 @@ export function ImageCanvas({
     context.putImageData(processedImageData, 0, 0)
   }, [blackWhiteIntensity, imageUrl, imageVersion])
 
+  useImperativeHandle(
+    ref,
+    () => ({
+      exportImage: () =>
+        new Promise<Blob>((resolve, reject) => {
+          const canvas = canvasRef.current
+
+          if (!canvas || isLoading || loadError) {
+            reject(new Error('Canvas is not ready'))
+            return
+          }
+
+          canvas.toBlob((blob) => {
+            if (blob) {
+              resolve(blob)
+              return
+            }
+
+            reject(new Error('Canvas export failed'))
+          }, 'image/png')
+        }),
+    }),
+    [isLoading, loadError],
+  )
+
   return (
     <div className="image-canvas-stage">
       {isLoading && <p className="canvas-message" role="status">正在加载图片...</p>}
@@ -126,4 +167,5 @@ export function ImageCanvas({
       />
     </div>
   )
-}
+  },
+)

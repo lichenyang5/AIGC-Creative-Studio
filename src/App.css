@@ -573,6 +573,50 @@ select.field-control {
   font-size: 14px;
 }
 
+.editor-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.export-image-button {
+  width: 108px;
+  min-width: 108px;
+  min-height: 42px;
+  border: 0;
+  border-radius: 9px;
+  background: var(--primary-color);
+  color: #ffffff;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background-color 160ms ease;
+}
+
+.export-image-button:hover:not(:disabled) {
+  background: var(--primary-hover);
+}
+
+.export-image-button:focus-visible {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.export-image-button:disabled {
+  background: #8f9ae3;
+  cursor: not-allowed;
+}
+
+.export-message {
+  width: 100%;
+  margin: 0;
+  color: #248154;
+  font-size: 12px;
+  text-align: right;
+}
+
 .editor-layout {
   min-width: 0;
   display: grid;
@@ -1275,6 +1319,10 @@ select.field-control {
 
   .editor-heading {
     align-items: flex-start;
+  }
+
+  .editor-actions {
+    justify-content: flex-start;
   }
 
   .editor-heading h2 {
