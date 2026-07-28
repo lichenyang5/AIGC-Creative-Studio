@@ -9,6 +9,13 @@ interface ResultPreviewProps {
   onRefreshTask: () => Promise<void>
 }
 
+const taskStatusText: Record<GenerationTask['status'], string> = {
+  pending: '等待处理',
+  processing: '生成中',
+  succeeded: '生成完成',
+  failed: '生成失败',
+}
+
 const formatCreatedAt = (createdAt: string): string => {
   if (!createdAt) {
     return '等待刷新'
@@ -50,7 +57,7 @@ export function ResultPreview({
               </div>
               <div>
                 <dt>状态</dt>
-                <dd className="task-status">{task.status}</dd>
+                <dd className="task-status">{taskStatusText[task.status]}</dd>
               </div>
               <div>
                 <dt>创建时间</dt>
@@ -65,7 +72,11 @@ export function ResultPreview({
             >
               {isRefreshingTask ? '查询中...' : '刷新状态'}
             </button>
-            {refreshError && <p className="refresh-error" role="alert">{refreshError}</p>}
+            {refreshError && (
+              <p className="refresh-error" role="alert">
+                {refreshError}
+              </p>
+            )}
           </div>
         ) : error ? (
           <div className="error-state" role="alert">

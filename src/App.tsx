@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import './App.css'
 import { GenerationForm } from './components/GenerationForm'
 import { Header } from './components/Header'
@@ -26,10 +26,13 @@ const initialFormData: GenerationFormData = {
 
 const styleMapping: Record<GenerationFormData['stylePreset'], GenerationStyle> = {
   '写实摄影': 'realistic',
-  '二次元': 'anime',
-  '赛博朋克': 'cyberpunk',
-  '水彩插画': 'watercolor',
+  二次元: 'anime',
+  赛博朋克: 'cyberpunk',
+  水彩插画: 'watercolor',
 }
+
+const isTerminalStatus = (status: GenerationTask['status']): boolean =>
+  status === 'succeeded' || status === 'failed'
 
 function App() {
   const [formData, setFormData] = useState(initialFormData)
@@ -39,6 +42,8 @@ function App() {
   const [isRefreshingTask, setIsRefreshingTask] = useState(false)
   const [refreshError, setRefreshError] = useState<string | null>(null)
   const [serviceStatus, setServiceStatus] = useState<ServiceStatus>('checking')
+  const isTaskQueryingRef = useRef(false)
+  const stoppedPollingTaskIdRef = useRef<string | null>(null)
 
   useEffect(() => {
     const checkHealth = async () => {
@@ -55,6 +60,92 @@ function App() {
     void checkHealth()
   }, [])
 
+  const requestTaskStatus = useCallback(
+    async (taskId: string): Promise<GenerationTask | 'busy' | null> => {
+      if (isTaskQueryingRef.current) {
+        return 'busy'
+      }
+
+      isTaskQueryingRef.current = true
+      setIsRefreshingTask(true)
+      setRefreshError(null)
+
+      try {
+        const response = await fetch(
+          `http://localhost:3001/api/generations/${taskId}`,
+        )
+        const data = (await response.json()) as
+          | GenerationTaskQuerySuccessResponse
+          | GenerationTaskQueryErrorResponse
+
+        if (response.ok && data.success) {
+          setGenerationTask(data.data)
+          return data.data
+        }
+
+        stoppedPollingTaskIdRef.current = taskId
+        setRefreshError('message' in data ? data.message : '查询任务状态失败')
+        return null
+      } catch {
+        stoppedPollingTaskIdRef.current = taskId
+        setRefreshError('无法连接任务查询服务，请稍后重试')
+        return null
+      } finally {
+        isTaskQueryingRef.current = false
+        setIsRefreshingTask(false)
+      }
+    },
+    [],
+  )
+
+  useEffect(() => {
+    if (!generationTask || isTerminalStatus(generationTask.status)) {
+      return
+    }
+
+    const taskId = generationTask.taskId
+    let isActive = true
+    let timerId: number | undefined
+
+    const scheduleNextPoll = () => {
+      timerId = window.setTimeout(() => {
+        void pollTask()
+      }, 1000)
+    }
+
+    const pollTask = async () => {
+      if (!isActive || stoppedPollingTaskIdRef.current === taskId) {
+        return
+      }
+
+      const result = await requestTaskStatus(taskId)
+
+      if (!isActive || stoppedPollingTaskIdRef.current === taskId) {
+        return
+      }
+
+      if (result === 'busy') {
+        scheduleNextPoll()
+        return
+      }
+
+      if (!result || isTerminalStatus(result.status)) {
+        return
+      }
+
+      scheduleNextPoll()
+    }
+
+    scheduleNextPoll()
+
+    return () => {
+      isActive = false
+      if (timerId !== undefined) {
+        window.clearTimeout(timerId)
+      }
+    }
+  }, [generationTask?.taskId, generationTask?.status, requestTaskStatus])
+
   const handleSubmit = async () => {
     if (isGenerating) {
       return
@@ -63,6 +154,8 @@ function App() {
     setIsGenerating(true)
     setGenerationTask(null)
     setGenerationError(null)
+    setRefreshError(null)
+    stoppedPollingTaskIdRef.current = null
 
     const seed = formData.seed.trim()
     const requestPayload: GenerationRequestPayload = {
@@ -101,34 +194,11 @@ function App() {
   }
 
   const handleRefreshTask = async () => {
-    if (!generationTask || isRefreshingTask) {
+    if (!generationTask) {
       return
     }
 
-    setIsRefreshingTask(true)
-    setRefreshError(null)
-
-    try {
-      const response = await fetch(
-        `http://localhost:3001/api/generations/${generationTask.taskId}`,
-      )
-      const data = (await response.json()) as
-        | GenerationTaskQuerySuccessResponse
-        | GenerationTaskQueryErrorResponse
-
-      if (response.ok && data.success) {
-        setGenerationTask(data.data)
-        return
-      }
-
-      setRefreshError(
-        'message' in data ? data.message : '查询任务状态失败',
-      )
-    } catch {
-      setRefreshError('无法连接任务查询服务，请稍后重试')
-    } finally {
-      setIsRefreshingTask(false)
-    }
+    await requestTaskStatus(generationTask.taskId)
   }
 
   return (

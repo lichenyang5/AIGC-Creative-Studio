@@ -6,6 +6,12 @@ export type GenerationStyle =
   | 'cyberpunk'
   | 'watercolor'
 
+export type GenerationTaskStatus =
+  | 'pending'
+  | 'processing'
+  | 'succeeded'
+  | 'failed'
+
 export interface GenerationRequestPayload {
   prompt: string
   negativePrompt?: string
@@ -17,9 +23,13 @@ export interface GenerationRequestPayload {
 
 export interface GenerationTask {
   taskId: string
-  status: 'pending'
+  status: GenerationTaskStatus
   request: GenerationRequestPayload
   createdAt: string
+  completedAt?: string
+  result?: {
+    imageUrls: string[]
+  }
 }
 
 export type GenerationCreationTask = Omit<GenerationTask, 'createdAt'>
