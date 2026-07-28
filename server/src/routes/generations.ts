@@ -1,6 +1,10 @@
 import { randomUUID } from 'node:crypto'
 import { Router } from 'express'
 import {
+  getGenerationTask,
+  saveGenerationTask,
+} from '../store/generationStore.js'
+import {
   aspectRatios,
   generationCounts,
   generationStyles,
@@ -9,6 +13,9 @@ import {
   type GenerationCount,
   type GenerationRequest,
   type GenerationStyle,
+  type GenerationTask,
+  type GenerationTaskNotFoundResponse,
+  type GenerationTaskResponse,
   type GenerationValidationError,
   type GenerationValidationErrorResponse,
 } from '../types/generation.js'
@@ -128,7 +135,35 @@ generationsRouter.post('/', (request, response) => {
     },
   }
 
+  const generationTask: GenerationTask = {
+    ...acceptedResponse.data,
+    createdAt: new Date().toISOString(),
+  }
+
+  saveGenerationTask(generationTask)
+
   response.status(202).json(acceptedResponse)
+})
+
+generationsRouter.get('/:taskId', (request, response) => {
+  const generationTask = getGenerationTask(request.params.taskId)
+
+  if (!generationTask) {
+    const notFoundResponse: GenerationTaskNotFoundResponse = {
+      success: false,
+      message: 'Generation task not found',
+    }
+
+    response.status(404).json(notFoundResponse)
+    return
+  }
+
+  const taskResponse: GenerationTaskResponse = {
+    success: true,
+    data: generationTask,
+  }
+
+  response.status(200).json(taskResponse)
 })
 
 export { generationsRouter }

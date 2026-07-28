@@ -10,6 +10,7 @@ export const generationStyles = [
 export type AspectRatio = (typeof aspectRatios)[number]
 export type GenerationCount = (typeof generationCounts)[number]
 export type GenerationStyle = (typeof generationStyles)[number]
+export type GenerationStatus = 'pending'
 
 export interface GenerationRequest {
   prompt: string
@@ -25,12 +26,19 @@ export interface GenerationValidationError {
   message: string
 }
 
+export interface GenerationTask {
+  taskId: string
+  status: GenerationStatus
+  request: GenerationRequest
+  createdAt: string
+}
+
 export interface GenerationAcceptedResponse {
   success: true
   message: 'Generation request accepted'
   data: {
     taskId: string
-    status: 'pending'
+    status: GenerationStatus
     request: GenerationRequest
   }
 }
@@ -39,4 +47,14 @@ export interface GenerationValidationErrorResponse {
   success: false
   message: 'Invalid generation request'
   errors: GenerationValidationError[]
+}
+
+export interface GenerationTaskResponse {
+  success: true
+  data: GenerationTask
+}
+
+export interface GenerationTaskNotFoundResponse {
+  success: false
+  message: 'Generation task not found'
 }
