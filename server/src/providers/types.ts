@@ -26,9 +26,23 @@ export interface GenerateImageResult {
   durationMs?: number
 }
 
-export interface ProviderError {
+export interface ProviderErrorOptions {
   code: string
   message: string
   retryable: boolean
   cause?: unknown
+}
+
+export class ProviderError extends Error {
+  readonly code: string
+  readonly retryable: boolean
+  readonly cause?: unknown
+
+  constructor({ code, message, retryable, cause }: ProviderErrorOptions) {
+    super(message)
+    this.name = 'ProviderError'
+    this.code = code
+    this.retryable = retryable
+    this.cause = cause
+  }
 }
