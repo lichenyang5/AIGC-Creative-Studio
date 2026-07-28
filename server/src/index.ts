@@ -1,6 +1,7 @@
 import cors from 'cors'
 import dotenv from 'dotenv'
 import express from 'express'
+import { generationsRouter } from './routes/generations.js'
 
 dotenv.config()
 
@@ -9,6 +10,8 @@ const port = Number(process.env.PORT) || 3001
 
 app.use(cors())
 app.use(express.json())
+
+app.use('/api/generations', generationsRouter)
 
 app.get('/api/health', (_request, response) => {
   response.json({
