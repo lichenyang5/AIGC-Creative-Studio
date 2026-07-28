@@ -1,8 +1,16 @@
+import type { GenerationTask } from '../types/generationApi'
+
 interface ResultPreviewProps {
   isGenerating: boolean
+  task: GenerationTask | null
+  error: string | null
 }
 
-export function ResultPreview({ isGenerating }: ResultPreviewProps) {
+export function ResultPreview({
+  isGenerating,
+  task,
+  error,
+}: ResultPreviewProps) {
   return (
     <section className="panel preview-panel" aria-labelledby="preview-title">
       <div className="panel-heading">
@@ -14,8 +22,29 @@ export function ResultPreview({ isGenerating }: ResultPreviewProps) {
         {isGenerating ? (
           <div className="loading-state" role="status" aria-live="polite">
             <span className="loading-spinner" aria-hidden="true" />
-            <h3>正在生成图片</h3>
-            <p>请稍候，正在整理你的创作参数</p>
+            <h3>正在提交任务</h3>
+            <p>正在将你的创作参数发送到服务端</p>
+          </div>
+        ) : task ? (
+          <div className="task-state" role="status">
+            <span className="task-state-icon" aria-hidden="true">✓</span>
+            <h3>任务已创建</h3>
+            <dl className="task-details">
+              <div>
+                <dt>Task ID</dt>
+                <dd>{task.taskId}</dd>
+              </div>
+              <div>
+                <dt>状态</dt>
+                <dd className="task-status">{task.status}</dd>
+              </div>
+            </dl>
+          </div>
+        ) : error ? (
+          <div className="error-state" role="alert">
+            <span className="error-state-icon" aria-hidden="true">!</span>
+            <h3>提交失败</h3>
+            <p>{error}</p>
           </div>
         ) : (
           <div className="empty-state">

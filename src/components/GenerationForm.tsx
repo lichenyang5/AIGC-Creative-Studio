@@ -9,8 +9,7 @@ import {
 interface GenerationFormProps {
   formData: GenerationFormData
   onChange: Dispatch<SetStateAction<GenerationFormData>>
-  onSubmit: () => void
-  showNotice: boolean
+  onSubmit: () => Promise<void>
   isGenerating: boolean
 }
 
@@ -18,7 +17,6 @@ export function GenerationForm({
   formData,
   onChange,
   onSubmit,
-  showNotice,
   isGenerating,
 }: GenerationFormProps) {
   const updateField = <Key extends keyof GenerationFormData>(
@@ -30,7 +28,7 @@ export function GenerationForm({
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    onSubmit()
+    void onSubmit()
   }
 
   return (
@@ -157,14 +155,8 @@ export function GenerationForm({
         </div>
 
         <button className="generate-button" type="submit" disabled={isGenerating}>
-          {isGenerating ? '生成中...' : '开始生成'}
+          {isGenerating ? '正在提交...' : '开始生成'}
         </button>
-
-        {showNotice && (
-          <p className="static-notice" role="status">
-            静态页面阶段：尚未接入图片生成服务
-          </p>
-        )}
       </form>
     </section>
   )
