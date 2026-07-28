@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import {
   ImageCanvas,
   type ImageCanvasHandle,
+  type ImageEditMode,
 } from '../components/ImageCanvas'
 import { createApiUrl } from '../config/api'
 import type {
@@ -30,8 +31,10 @@ export function EditorPage() {
   const [task, setTask] = useState<GenerationTask | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
-  const [isBlackWhiteActive, setIsBlackWhiteActive] = useState(false)
+  const [editMode, setEditMode] = useState<ImageEditMode>('original')
   const [blackWhiteIntensity, setBlackWhiteIntensity] = useState(0)
+  const [gradientPosition, setGradientPosition] = useState(50)
+  const [gradientWidth, setGradientWidth] = useState(15)
   const [isCanvasReady, setIsCanvasReady] = useState(false)
   const [isExporting, setIsExporting] = useState(false)
   const [exportMessage, setExportMessage] = useState<string | null>(null)
@@ -39,8 +42,10 @@ export function EditorPage() {
   const imageIndex = isValidImageIndex(imageIndexParam) ? Number(imageIndexParam) : null
 
   const handleImageLoad = useCallback(() => {
-    setIsBlackWhiteActive(false)
+    setEditMode('original')
     setBlackWhiteIntensity(0)
+    setGradientPosition(50)
+    setGradientWidth(15)
   }, [])
 
   const handleCanvasLoadStateChange = useCallback((isReady: boolean) => {
@@ -48,8 +53,10 @@ export function EditorPage() {
   }, [])
 
   useEffect(() => {
-    setIsBlackWhiteActive(false)
+    setEditMode('original')
     setBlackWhiteIntensity(0)
+    setGradientPosition(50)
+    setGradientWidth(15)
     setIsCanvasReady(false)
     setExportMessage(null)
   }, [taskId, imageIndexParam])
@@ -190,15 +197,15 @@ export function EditorPage() {
           <h3>编辑工具</h3>
           <button
             type="button"
-            className={isBlackWhiteActive ? 'is-active' : ''}
+            className={editMode === 'grayscale' ? 'is-active' : ''}
             onClick={() => {
-              setIsBlackWhiteActive(true)
+              setEditMode('grayscale')
               setBlackWhiteIntensity(100)
             }}
           >
             黑白
           </button>
-          {isBlackWhiteActive && (
+          {editMode === 'grayscale' && (
             <section className="filter-adjustments" aria-label="黑白强度调整">
               <label htmlFor="black-white-intensity">
                 强度 <output>{blackWhiteIntensity}%</output>
@@ -211,21 +218,55 @@ export function EditorPage() {
                 value={blackWhiteIntensity}
                 onChange={(event) => setBlackWhiteIntensity(Number(event.target.value))}
               />
-              <button
-                type="button"
-                className="restore-image-button"
-                onClick={() => setBlackWhiteIntensity(0)}
-                disabled={blackWhiteIntensity === 0}
-              >
-                恢复原图
-              </button>
             </section>
           )}
           <button type="button" disabled>
             雨滴 <span>即将支持</span>
           </button>
-          <button type="button" disabled>
-            灰度渐变 <span>即将支持</span>
+          <button
+            type="button"
+            className={editMode === 'gradient' ? 'is-active' : ''}
+            onClick={() => {
+              setEditMode('gradient')
+              setGradientPosition(50)
+              setGradientWidth(15)
+            }}
+          >
+            灰度渐变
+          </button>
+          {editMode === 'gradient' && (
+            <section className="filter-adjustments" aria-label="灰度渐变调整">
+              <label htmlFor="gradient-position">
+                渐变位置 <output>{gradientPosition}%</output>
+              </label>
+              <input
+                id="gradient-position"
+                type="range"
+                min="0"
+                max="100"
+                value={gradientPosition}
+                onChange={(event) => setGradientPosition(Number(event.target.value))}
+              />
+              <label htmlFor="gradient-width">
+                过渡宽度 <output>{gradientWidth}%</output>
+              </label>
+              <input
+                id="gradient-width"
+                type="range"
+                min="0"
+                max="50"
+                value={gradientWidth}
+                onChange={(event) => setGradientWidth(Number(event.target.value))}
+              />
+            </section>
+          )}
+          <button
+            type="button"
+            className="restore-image-button"
+            onClick={() => setEditMode('original')}
+            disabled={editMode === 'original'}
+          >
+            恢复原图
           </button>
         </aside>
 
@@ -234,9 +275,10 @@ export function EditorPage() {
             ref={imageCanvasRef}
             imageUrl={imageUrl}
             alt={`生成任务 ${task.taskId} 的第 ${imageIndex + 1} 张图片`}
-            blackWhiteIntensity={
-              isBlackWhiteActive ? blackWhiteIntensity : 0
-            }
+            mode={editMode}
+            blackWhiteIntensity={blackWhiteIntensity}
+            gradientPosition={gradientPosition}
+            gradientWidth={gradientWidth}
             onImageLoad={handleImageLoad}
             onLoadStateChange={handleCanvasLoadStateChange}
           />

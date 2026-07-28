@@ -9,7 +9,10 @@ import {
 interface ImageCanvasProps {
   imageUrl: string
   alt: string
+  mode: ImageEditMode
   blackWhiteIntensity: number
+  gradientPosition: number
+  gradientWidth: number
   onImageLoad: () => void
   onLoadStateChange: (isReady: boolean) => void
 }
@@ -18,11 +21,16 @@ export interface ImageCanvasHandle {
   exportImage: () => Promise<Blob>
 }
 
+export type ImageEditMode = 'original' | 'grayscale' | 'gradient'
+
 export const ImageCanvas = forwardRef<ImageCanvasHandle, ImageCanvasProps>(
   function ImageCanvas({
   imageUrl,
   alt,
+  mode,
   blackWhiteIntensity,
+  gradientPosition,
+  gradientWidth,
   onImageLoad,
   onLoadStateChange,
 }, ref) {
@@ -106,8 +114,7 @@ export const ImageCanvas = forwardRef<ImageCanvasHandle, ImageCanvasProps>(
       return
     }
 
-    const intensity = Math.min(Math.max(blackWhiteIntensity, 0), 100) / 100
-    if (intensity === 0) {
+    if (mode === 'original') {
       context.putImageData(originalImageData, 0, 0)
       return
     }
@@ -116,20 +123,69 @@ export const ImageCanvas = forwardRef<ImageCanvasHandle, ImageCanvasProps>(
     const source = originalImageData.data
     const target = processedImageData.data
 
-    for (let index = 0; index < source.length; index += 4) {
-      const gray =
-        0.299 * source[index] +
-        0.587 * source[index + 1] +
-        0.114 * source[index + 2]
+    if (mode === 'grayscale') {
+      const intensity = Math.min(Math.max(blackWhiteIntensity, 0), 100) / 100
 
-      target[index] = source[index] * (1 - intensity) + gray * intensity
-      target[index + 1] = source[index + 1] * (1 - intensity) + gray * intensity
-      target[index + 2] = source[index + 2] * (1 - intensity) + gray * intensity
-      target[index + 3] = source[index + 3]
+      for (let index = 0; index < source.length; index += 4) {
+        const gray =
+          0.299 * source[index] +
+          0.587 * source[index + 1] +
+          0.114 * source[index + 2]
+
+        target[index] = source[index] * (1 - intensity) + gray * intensity
+        target[index + 1] = source[index + 1] * (1 - intensity) + gray * intensity
+        target[index + 2] = source[index + 2] * (1 - intensity) + gray * intensity
+        target[index + 3] = source[index + 3]
+      }
+
+      context.putImageData(processedImageData, 0, 0)
+      return
+    }
+
+    const imageWidth = originalImageData.width
+    const imageHeight = originalImageData.height
+    const center = (Math.min(Math.max(gradientPosition, 0), 100) / 100) * imageWidth
+    const transitionWidth =
+      (Math.min(Math.max(gradientWidth, 0), 50) / 100) * imageWidth
+    const start = center - transitionWidth / 2
+    const end = center + transitionWidth / 2
+    const colorMixByColumn = new Float32Array(imageWidth)
+
+    for (let x = 0; x < imageWidth; x += 1) {
+      if (transitionWidth === 0) {
+        colorMixByColumn[x] = x < center ? 0 : 1
+        continue
+      }
+
+      const t = Math.min(Math.max((x - start) / (end - start), 0), 1)
+      colorMixByColumn[x] = t * t * (3 - 2 * t)
+    }
+
+    for (let y = 0; y < imageHeight; y += 1) {
+      for (let x = 0; x < imageWidth; x += 1) {
+        const index = (y * imageWidth + x) * 4
+        const colorMix = colorMixByColumn[x]
+        const gray =
+          0.299 * source[index] +
+          0.587 * source[index + 1] +
+          0.114 * source[index + 2]
+
+        target[index] = gray * (1 - colorMix) + source[index] * colorMix
+        target[index + 1] = gray * (1 - colorMix) + source[index + 1] * colorMix
+        target[index + 2] = gray * (1 - colorMix) + source[index + 2] * colorMix
+        target[index + 3] = source[index + 3]
+      }
     }
 
     context.putImageData(processedImageData, 0, 0)
-  }, [blackWhiteIntensity, imageUrl, imageVersion])
+  }, [
+    blackWhiteIntensity,
+    gradientPosition,
+    gradientWidth,
+    imageUrl,
+    imageVersion,
+    mode,
+  ])
 
   useImperativeHandle(
     ref,
