@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { ImageCanvas } from '../components/ImageCanvas'
 import { createApiUrl } from '../config/api'
@@ -27,7 +27,19 @@ export function EditorPage() {
   const [task, setTask] = useState<GenerationTask | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [isBlackWhiteActive, setIsBlackWhiteActive] = useState(false)
+  const [blackWhiteIntensity, setBlackWhiteIntensity] = useState(0)
   const imageIndex = isValidImageIndex(imageIndexParam) ? Number(imageIndexParam) : null
+
+  const handleImageLoad = useCallback(() => {
+    setIsBlackWhiteActive(false)
+    setBlackWhiteIntensity(0)
+  }, [])
+
+  useEffect(() => {
+    setIsBlackWhiteActive(false)
+    setBlackWhiteIntensity(0)
+  }, [taskId, imageIndexParam])
 
   useEffect(() => {
     let isActive = true
@@ -124,15 +136,55 @@ export function EditorPage() {
       <div className="editor-layout">
         <aside className="editor-tools" aria-label="编辑工具">
           <h3>编辑工具</h3>
-          <button type="button" disabled>黑白</button>
-          <button type="button" disabled>雨滴</button>
-          <button type="button" disabled>灰度渐变</button>
+          <button
+            type="button"
+            className={isBlackWhiteActive ? 'is-active' : ''}
+            onClick={() => {
+              setIsBlackWhiteActive(true)
+              setBlackWhiteIntensity(100)
+            }}
+          >
+            黑白
+          </button>
+          {isBlackWhiteActive && (
+            <section className="filter-adjustments" aria-label="黑白强度调整">
+              <label htmlFor="black-white-intensity">
+                强度 <output>{blackWhiteIntensity}%</output>
+              </label>
+              <input
+                id="black-white-intensity"
+                type="range"
+                min="0"
+                max="100"
+                value={blackWhiteIntensity}
+                onChange={(event) => setBlackWhiteIntensity(Number(event.target.value))}
+              />
+              <button
+                type="button"
+                className="restore-image-button"
+                onClick={() => setBlackWhiteIntensity(0)}
+                disabled={blackWhiteIntensity === 0}
+              >
+                恢复原图
+              </button>
+            </section>
+          )}
+          <button type="button" disabled>
+            雨滴 <span>即将支持</span>
+          </button>
+          <button type="button" disabled>
+            灰度渐变 <span>即将支持</span>
+          </button>
         </aside>
 
         <section className="editor-canvas-panel" aria-label="图片画布">
           <ImageCanvas
             imageUrl={imageUrl}
             alt={`生成任务 ${task.taskId} 的第 ${imageIndex + 1} 张图片`}
+            blackWhiteIntensity={
+              isBlackWhiteActive ? blackWhiteIntensity : 0
+            }
+            onImageLoad={handleImageLoad}
           />
         </section>
 

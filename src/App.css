@@ -620,6 +620,89 @@ select.field-control {
   cursor: not-allowed;
 }
 
+.editor-tools button:not(:disabled) {
+  background: #ffffff;
+  color: var(--body-color);
+  cursor: pointer;
+}
+
+.editor-tools button:not(:disabled):hover {
+  border-color: var(--primary-color);
+}
+
+.editor-tools button.is-active {
+  border-color: var(--primary-color);
+  background: var(--primary-soft);
+  color: var(--primary-color);
+  cursor: pointer;
+}
+
+.editor-tools button span {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+}
+
+.filter-adjustments {
+  padding: 12px;
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 9px;
+  background: #f7f8fe;
+}
+
+.filter-adjustments label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--heading-color);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.filter-adjustments output {
+  min-width: 38px;
+  color: var(--primary-color);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.filter-adjustments input[type='range'] {
+  width: 100%;
+  margin: 0;
+  accent-color: var(--primary-color);
+}
+
+.filter-adjustments input[type='range']:focus-visible,
+.restore-image-button:focus-visible {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.restore-image-button {
+  min-height: 36px;
+  border: 1px solid var(--border-strong);
+  border-radius: 7px;
+  background: #ffffff;
+  color: var(--primary-color);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.restore-image-button:hover:not(:disabled) {
+  border-color: var(--primary-color);
+  background: var(--primary-soft);
+}
+
+.restore-image-button:disabled {
+  color: var(--muted-color);
+  cursor: not-allowed;
+}
+
 .editor-info dl {
   margin: 0;
   display: grid;
@@ -1108,6 +1191,10 @@ select.field-control {
   .editor-tools h3 {
     grid-column: 1 / -1;
     margin-bottom: 0;
+  }
+
+  .filter-adjustments {
+    grid-column: 1 / -1;
   }
 
   .editor-canvas-panel {
