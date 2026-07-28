@@ -35,3 +35,6 @@ export const updateGenerationTask = (
   generationTasks.set(taskId, updatedTask)
   return updatedTask
 }
+
+export const deleteGenerationTask = (taskId: string): boolean =>
+  generationTasks.delete(taskId)

@@ -4,10 +4,13 @@ import {
   ImageCanvas,
   type ImageCanvasHandle,
   type ImageEditMode,
+  type ColorRippleState,
 } from '../components/ImageCanvas'
 import { createApiUrl } from '../config/api'
 import type {
   GenerationStyle,
+  GenerationEditSaveErrorResponse,
+  GenerationEditSaveSuccessResponse,
   GenerationTask,
   GenerationTaskQueryErrorResponse,
   GenerationTaskQuerySuccessResponse,
@@ -26,6 +29,10 @@ const isValidImageIndex = (value: string | undefined): value is string =>
 const formatCreatedAt = (createdAt: string): string =>
   new Date(createdAt).toLocaleString('zh-CN')
 
+const shouldPlayRainByDefault = (): boolean =>
+  typeof window === 'undefined' ||
+  !window.matchMedia('(prefers-reduced-motion: reduce)').matches
+
 export function EditorPage() {
   const { taskId, imageIndex: imageIndexParam } = useParams()
   const [task, setTask] = useState<GenerationTask | null>(null)
@@ -39,9 +46,26 @@ export function EditorPage() {
   const [rainLength, setRainLength] = useState(25)
   const [rainAngle, setRainAngle] = useState(-15)
   const [rainOpacity, setRainOpacity] = useState(40)
+  const [rainSpeed, setRainSpeed] = useState(5)
+  const [isRainPlaying, setIsRainPlaying] = useState(
+    shouldPlayRainByDefault,
+  )
+  const [colorRippleRange, setColorRippleRange] = useState(70)
+  const [colorRippleSpeed, setColorRippleSpeed] = useState(5)
+  const [colorRippleState, setColorRippleState] = useState<ColorRippleState>('ready')
+  const [colorRipplePlayId, setColorRipplePlayId] = useState(0)
+  const [isColorRipplePaused, setIsColorRipplePaused] = useState(false)
+  const [hasColorRipplePoint, setHasColorRipplePoint] = useState(false)
+  const [isDynamicExporting, setIsDynamicExporting] = useState(false)
+  const [dynamicExportMessage, setDynamicExportMessage] = useState<string | null>(null)
+  const [, setColorRipplePointVersion] = useState(0)
   const [isCanvasReady, setIsCanvasReady] = useState(false)
   const [isExporting, setIsExporting] = useState(false)
   const [exportMessage, setExportMessage] = useState<string | null>(null)
+  const [isSaving, setIsSaving] = useState(false)
+  const [saveMessage, setSaveMessage] = useState<string | null>(null)
+  const [isSaveError, setIsSaveError] = useState(false)
+  const [hasSavedEdit, setHasSavedEdit] = useState(false)
   const imageCanvasRef = useRef<ImageCanvasHandle>(null)
   const imageIndex = isValidImageIndex(imageIndexParam) ? Number(imageIndexParam) : null
 
@@ -54,6 +78,17 @@ export function EditorPage() {
     setRainLength(25)
     setRainAngle(-15)
     setRainOpacity(40)
+    setRainSpeed(5)
+    setIsRainPlaying(shouldPlayRainByDefault())
+    setColorRippleRange(70)
+    setColorRippleSpeed(5)
+    setColorRippleState('ready')
+    setColorRipplePlayId(0)
+    setIsColorRipplePaused(false)
+    setHasColorRipplePoint(false)
+    setSaveMessage(null)
+    setIsSaveError(false)
+    setHasSavedEdit(false)
   }, [])
 
   const handleCanvasLoadStateChange = useCallback((isReady: boolean) => {
@@ -62,6 +97,15 @@ export function EditorPage() {
 
   const handleGradientPositionChange = useCallback((position: number) => {
     setGradientPosition(position)
+  }, [])
+
+  const handleColorRipplePointChange = useCallback((hasPoint: boolean) => {
+    setHasColorRipplePoint(hasPoint)
+    setColorRipplePointVersion((value) => value + 1)
+  }, [])
+
+  const handleColorRippleStateChange = useCallback((state: ColorRippleState) => {
+    setColorRippleState(state)
   }, [])
 
   useEffect(() => {
@@ -73,8 +117,19 @@ export function EditorPage() {
     setRainLength(25)
     setRainAngle(-15)
     setRainOpacity(40)
+    setRainSpeed(5)
+    setIsRainPlaying(shouldPlayRainByDefault())
+    setColorRippleRange(70)
+    setColorRippleSpeed(5)
+    setColorRippleState('ready')
+    setColorRipplePlayId(0)
+    setIsColorRipplePaused(false)
+    setHasColorRipplePoint(false)
     setIsCanvasReady(false)
     setExportMessage(null)
+    setSaveMessage(null)
+    setIsSaveError(false)
+    setHasSavedEdit(false)
   }, [taskId, imageIndexParam])
 
   useEffect(() => {
@@ -185,6 +240,73 @@ export function EditorPage() {
     }
   }
 
+  const handleSaveToLibrary = async () => {
+    if (isSaving || !isCanvasReady || !imageCanvasRef.current) {
+      return
+    }
+
+    setIsSaving(true)
+    setSaveMessage(null)
+    setIsSaveError(false)
+
+    try {
+      const blob = await imageCanvasRef.current.exportImage()
+      const response = await fetch(
+        createApiUrl(`/api/generations/${task.taskId}/images/${imageIndex}/edits`),
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'image/png' },
+          body: blob,
+        },
+      )
+      const data = (await response.json()) as
+        | GenerationEditSaveSuccessResponse
+        | GenerationEditSaveErrorResponse
+
+      if (response.status === 201 && data.success) {
+        setSaveMessage('已保存到生成库')
+        setHasSavedEdit(true)
+        return
+      }
+
+      setSaveMessage('message' in data ? data.message : '保存编辑图片失败')
+      setIsSaveError(true)
+    } catch {
+      setSaveMessage('保存编辑图片失败，请稍后重试')
+      setIsSaveError(true)
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  const handleDynamicExport = async () => {
+    if (isDynamicExporting || !isCanvasReady || !imageCanvasRef.current) return
+    setIsDynamicExporting(true)
+    setDynamicExportMessage(null)
+    try {
+      const video = await imageCanvasRef.current.exportColorRippleVideo()
+      const objectUrl = URL.createObjectURL(video)
+      const link = document.createElement('a')
+      link.href = objectUrl
+      link.download = `aigc-color-ripple-${task.taskId}-${imageIndex}.webm`
+      document.body.append(link)
+      link.click()
+      link.remove()
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0)
+      setDynamicExportMessage('动态效果已导出')
+    } catch (cause: unknown) {
+      setDynamicExportMessage(
+        cause instanceof Error && cause.message === 'No video data'
+          ? '未生成有效的视频文件'
+          : cause instanceof Error && cause.message === 'Dynamic export is not supported'
+            ? '当前浏览器不支持动态效果导出，请使用最新版 Chrome 或 Edge'
+            : '动态效果导出超时，请降低动画时长后重试',
+      )
+    } finally {
+      setIsDynamicExporting(false)
+    }
+  }
+
   return (
     <main className="editor-page">
       <div className="editor-heading">
@@ -194,6 +316,14 @@ export function EditorPage() {
         </div>
         <div className="editor-actions">
           <button
+            className="save-image-button"
+            type="button"
+            onClick={() => void handleSaveToLibrary()}
+            disabled={!isCanvasReady || isSaving}
+          >
+            {isSaving ? '保存中...' : '保存到生成库'}
+          </button>
+          <button
             className="export-image-button"
             type="button"
             onClick={() => void handleExport()}
@@ -202,8 +332,19 @@ export function EditorPage() {
             {isExporting ? '导出中...' : '导出图片'}
           </button>
           <Link className="library-create-link" to="/library">返回生成库</Link>
+          {hasSavedEdit && (
+            <Link className="view-library-link" to="/library">查看生成库</Link>
+          )}
           {exportMessage && (
             <p className="export-message" role="status">{exportMessage}</p>
+          )}
+          {saveMessage && (
+            <p
+              className={isSaveError ? 'save-message is-error' : 'save-message'}
+              role={isSaveError ? 'alert' : 'status'}
+            >
+              {saveMessage}
+            </p>
           )}
         </div>
       </div>
@@ -214,6 +355,7 @@ export function EditorPage() {
           <button
             type="button"
             className={editMode === 'grayscale' ? 'is-active' : ''}
+            disabled={isDynamicExporting}
             onClick={() => {
               setEditMode('grayscale')
               setBlackWhiteIntensity(100)
@@ -239,6 +381,7 @@ export function EditorPage() {
           <button
             type="button"
             className={editMode === 'rain' ? 'is-active' : ''}
+            disabled={isDynamicExporting}
             onClick={() => setEditMode('rain')}
           >
             雨滴
@@ -289,11 +432,30 @@ export function EditorPage() {
                 value={rainOpacity}
                 onChange={(event) => setRainOpacity(Number(event.target.value))}
               />
+              <label htmlFor="rain-speed">
+                雨滴速度 <output>{rainSpeed}</output>
+              </label>
+              <input
+                id="rain-speed"
+                type="range"
+                min="1"
+                max="10"
+                value={rainSpeed}
+                onChange={(event) => setRainSpeed(Number(event.target.value))}
+              />
+              <button
+                type="button"
+                className="rain-play-button"
+                onClick={() => setIsRainPlaying((current) => !current)}
+              >
+                {isRainPlaying ? '暂停雨滴' : '播放雨滴'}
+              </button>
             </section>
           )}
           <button
             type="button"
             className={editMode === 'gradient' ? 'is-active' : ''}
+            disabled={isDynamicExporting}
             onClick={() => {
               setEditMode('gradient')
             }}
@@ -328,6 +490,30 @@ export function EditorPage() {
           )}
           <button
             type="button"
+            className={editMode === 'colorRipple' ? 'is-active' : ''}
+            disabled={isDynamicExporting}
+            onClick={() => setEditMode('colorRipple')}
+          >
+            色彩涟漪
+          </button>
+          {editMode === 'colorRipple' && (
+            <section className="filter-adjustments" aria-label="色彩涟漪调整">
+              <p className="ripple-tip">点击图片设置雨滴落点，播放后涟漪将逐渐唤醒原图色彩。</p>
+              <p className="ripple-status">落点：{hasColorRipplePoint ? '已设置' : '等待设置'} · {colorRippleState}</p>
+              <label htmlFor="ripple-range">扩散范围 <output>{colorRippleRange}%</output></label>
+              <input id="ripple-range" type="range" min="20" max="100" value={colorRippleRange} disabled={isDynamicExporting} onChange={(event) => setColorRippleRange(Number(event.target.value))} />
+              <label htmlFor="ripple-speed">动画速度 <output>{colorRippleSpeed}</output></label>
+              <input id="ripple-speed" type="range" min="1" max="10" value={colorRippleSpeed} disabled={isDynamicExporting} onChange={(event) => setColorRippleSpeed(Number(event.target.value))} />
+              <button type="button" className="rain-play-button" onClick={() => { setIsColorRipplePaused(false); setColorRipplePlayId((value) => value + 1) }}>播放效果</button>
+              <button type="button" className="rain-play-button" onClick={() => setIsColorRipplePaused((value) => !value)} disabled={colorRippleState !== 'dropping' && colorRippleState !== 'rippling'}>{isColorRipplePaused ? '继续播放' : '暂停效果'}</button>
+              <button type="button" className="rain-play-button" onClick={() => { setIsColorRipplePaused(false); setColorRipplePlayId((value) => value + 1) }}>重新播放</button>
+              <button type="button" className="dynamic-export-button" onClick={() => void handleDynamicExport()} disabled={!isCanvasReady || isDynamicExporting}> {isDynamicExporting ? '正在录制...' : '导出动态效果'} </button>
+              <p className="dynamic-export-note">导出雨滴与涟漪动画为 WebM 视频</p>
+              {dynamicExportMessage && <p className="dynamic-export-message" role="status">{dynamicExportMessage}</p>}
+            </section>
+          )}
+          <button
+            type="button"
             className="restore-image-button"
             onClick={() => setEditMode('original')}
             disabled={editMode === 'original'}
@@ -349,8 +535,16 @@ export function EditorPage() {
             rainLength={rainLength}
             rainAngle={rainAngle}
             rainOpacity={rainOpacity}
+            rainSpeed={rainSpeed}
+            isRainPlaying={isRainPlaying}
+            colorRippleRange={colorRippleRange}
+            colorRippleSpeed={colorRippleSpeed}
+            colorRipplePlayId={colorRipplePlayId}
+            isColorRipplePaused={isColorRipplePaused}
             rainSeed={`${task.taskId}-${imageIndex}`}
             onGradientPositionChange={handleGradientPositionChange}
+            onColorRipplePointChange={handleColorRipplePointChange}
+            onColorRippleStateChange={handleColorRippleStateChange}
             onImageLoad={handleImageLoad}
             onLoadStateChange={handleCanvasLoadStateChange}
           />

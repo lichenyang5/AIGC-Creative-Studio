@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises'
 import { basename, dirname, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { GeneratedImage } from '../providers/types.js'
@@ -76,11 +76,54 @@ export const saveGeneratedImages = async (
 
       return {
         url: `/api/images/${filename}`,
+        kind: 'generated',
         ...(image.width === undefined ? {} : { width: image.width }),
         ...(image.height === undefined ? {} : { height: image.height }),
       }
     }),
   )
+}
+
+export const saveEditedImage = async (
+  taskId: string,
+  editId: string,
+  imageData: Buffer,
+): Promise<string> => {
+  await mkdir(imagesDirectory, { recursive: true })
+
+  const filename = `${taskId}-edit-${editId}.png`
+  const imagePath = getSafeImagePath(filename)
+
+  if (!imagePath) {
+    throw new LocalImageStorageError(
+      'LOCAL_IMAGE_PATH_INVALID',
+      'Unable to save edited image',
+    )
+  }
+
+  try {
+    await writeFile(imagePath, imageData)
+    return filename
+  } catch {
+    throw new LocalImageStorageError(
+      'LOCAL_IMAGE_WRITE_FAILED',
+      'Unable to save edited image',
+    )
+  }
+}
+
+export const deleteStoredImage = async (filename: string): Promise<void> => {
+  const imagePath = getSafeImagePath(filename)
+
+  if (!imagePath) {
+    return
+  }
+
+  try {
+    await unlink(imagePath)
+  } catch {
+    // The file may not have been created or may already be cleaned up.
+  }
 }
 
 export const readStoredImage = async (filename: string): Promise<Buffer | null> => {

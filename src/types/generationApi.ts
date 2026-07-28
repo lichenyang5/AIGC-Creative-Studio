@@ -25,6 +25,9 @@ export interface GeneratedImage {
   url: string
   width?: number
   height?: number
+  kind?: 'generated' | 'edited'
+  createdAt?: string
+  sourceImageIndex?: number
 }
 
 export interface GenerationTask {
@@ -83,6 +86,21 @@ export interface GenerationListResponse {
 }
 
 export interface GenerationListErrorResponse {
+  success: false
+  message: string
+}
+
+export interface GenerationEditSaveSuccessResponse {
+  success: true
+  message: 'Edited image saved'
+  data: {
+    taskId: string
+    imageIndex: number
+    image: GeneratedImage
+  }
+}
+
+export interface GenerationEditSaveErrorResponse {
   success: false
   message: string
 }

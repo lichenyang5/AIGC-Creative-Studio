@@ -12,6 +12,7 @@ export function LibraryPage() {
   const [tasks, setTasks] = useState<GenerationTask[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
+  const [deleteMessage, setDeleteMessage] = useState<string | null>(null)
 
   useEffect(() => {
     let isActive = true
@@ -58,6 +59,21 @@ export function LibraryPage() {
     })),
   )
 
+  const handleImageDeleted = (
+    taskId: string,
+    imageIndex: number,
+    taskDeleted: boolean,
+  ) => {
+    setTasks((currentTasks) =>
+      currentTasks.flatMap((task) => {
+        if (task.taskId !== taskId) return [task]
+        if (taskDeleted) return []
+        return [{ ...task, result: { images: (task.result?.images ?? []).filter((_, index) => index !== imageIndex) } }]
+      }),
+    )
+    setDeleteMessage('作品已删除')
+  }
+
   return (
     <main className="library-page">
         <div className="library-heading">
@@ -94,6 +110,8 @@ export function LibraryPage() {
             </Link>
           </div>
         ) : (
+          <>
+          {deleteMessage && <p className="library-delete-message" role="status">{deleteMessage}</p>}
           <section className="library-grid" aria-label="已生成的图片">
             {imageCards.map(({ task, image, imageIndex }) => (
               <GenerationCard
@@ -101,9 +119,11 @@ export function LibraryPage() {
                 task={task}
                 image={image}
                 imageIndex={imageIndex}
+                onDeleted={handleImageDeleted}
               />
             ))}
           </section>
+          </>
         )}
     </main>
   )

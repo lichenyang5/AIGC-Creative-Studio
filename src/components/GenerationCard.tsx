@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { createApiUrl } from '../config/api'
 import {
@@ -11,6 +11,7 @@ interface GenerationCardProps {
   task: GenerationTask
   image: GeneratedImage
   imageIndex: number
+  onDeleted: (taskId: string, imageIndex: number, taskDeleted: boolean) => void
 }
 
 const styleText: Record<GenerationStyle, string> = {
@@ -27,10 +28,49 @@ export function GenerationCard({
   task,
   image,
   imageIndex,
+  onDeleted,
 }: GenerationCardProps) {
   const [isDownloading, setIsDownloading] = useState(false)
   const [downloadError, setDownloadError] = useState<string | null>(null)
   const [hasImageError, setHasImageError] = useState(false)
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
+  const confirmButtonRef = useRef<HTMLButtonElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+
+  useEffect(() => {
+    if (!isDeleteDialogOpen) return
+    const originalOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    confirmButtonRef.current?.focus()
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !isDeleting) setIsDeleteDialogOpen(false)
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.body.style.overflow = originalOverflow
+      window.removeEventListener('keydown', handleKeyDown)
+      triggerRef.current?.focus()
+    }
+  }, [isDeleteDialogOpen, isDeleting])
+
+  const handleDelete = async () => {
+    if (isDeleting) return
+    setIsDeleting(true)
+    setDeleteError(null)
+    try {
+      const response = await fetch(createApiUrl(`/api/generations/${task.taskId}/images/${imageIndex}`), { method: 'DELETE' })
+      const data = (await response.json()) as { success: boolean; message: string; data?: { taskDeleted: boolean } }
+      if (!response.ok || !data.success || !data.data) throw new Error(data.message)
+      onDeleted(task.taskId, imageIndex, data.data.taskDeleted)
+      setIsDeleteDialogOpen(false)
+    } catch (cause: unknown) {
+      setDeleteError(cause instanceof Error ? cause.message : '删除作品失败')
+    } finally {
+      setIsDeleting(false)
+    }
+  }
 
   const handleDownload = async () => {
     if (isDownloading) {
@@ -70,6 +110,9 @@ export function GenerationCard({
   return (
     <article className="library-card">
       <div className="library-image-wrap">
+        <span className="image-kind-label">
+          {image.kind === 'edited' ? '编辑作品' : 'AI 生成'}
+        </span>
         {hasImageError ? (
           <div className="library-image-placeholder" role="img" aria-label="图片加载失败">
             图片加载失败
@@ -115,6 +158,7 @@ export function GenerationCard({
           >
             {isDownloading ? '下载中...' : '下载'}
           </button>
+          <button ref={triggerRef} type="button" className="delete-image-button" onClick={() => setIsDeleteDialogOpen(true)}>删除</button>
           <button
             type="button"
             className="image-action-button"
@@ -136,6 +180,19 @@ export function GenerationCard({
           </p>
         )}
       </div>
+      {isDeleteDialogOpen && (
+        <div className="delete-dialog-backdrop" onClick={() => !isDeleting && setIsDeleteDialogOpen(false)}>
+          <section className="delete-dialog" role="dialog" aria-modal="true" aria-labelledby="delete-dialog-title" onClick={(event) => event.stopPropagation()}>
+            <h3 id="delete-dialog-title">删除这张作品？</h3>
+            <p>删除后将无法恢复，本地图片文件也会被移除。</p>
+            {deleteError && <p className="library-card-error" role="alert">{deleteError}</p>}
+            <div className="delete-dialog-actions">
+              <button type="button" className="image-action-button" disabled={isDeleting} onClick={() => setIsDeleteDialogOpen(false)}>取消</button>
+              <button ref={confirmButtonRef} type="button" className="delete-confirm-button" disabled={isDeleting} onClick={() => void handleDelete()}>{isDeleting ? '删除中...' : '确认删除'}</button>
+            </div>
+          </section>
+        </div>
+      )}
     </article>
   )
 }

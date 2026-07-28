@@ -1,16 +1,19 @@
 import { randomUUID } from 'node:crypto'
-import { Router } from 'express'
+import express, { Router } from 'express'
 import { WanxImageProvider } from '../providers/WanxImageProvider.js'
 import { ProviderError, type GenerateImageInput } from '../providers/types.js'
 import { saveGenerationTasks } from '../repositories/generationRepository.js'
 import {
   getStoredImageFilename,
+  deleteStoredImage,
   LocalImageStorageError,
   readStoredImage,
+  saveEditedImage,
   saveGeneratedImages,
 } from '../storage/localImageStorage.js'
 import {
   getAllGenerationTasks,
+  deleteGenerationTask,
   getGenerationTask,
   saveGenerationTask,
   updateGenerationTask,
@@ -29,6 +32,7 @@ import {
   type GenerationRequest,
   type GenerationStatus,
   type GenerationStyle,
+  type GenerationImage,
   type GenerationTask,
   type GenerationTaskNotFoundResponse,
   type GenerationTaskResponse,
@@ -353,6 +357,176 @@ generationsRouter.get('/', (request, response) => {
   }
 
   response.status(200).json(listResponse)
+})
+
+generationsRouter.post(
+  '/:taskId/images/:imageIndex/edits',
+  express.raw({ type: 'image/png', limit: '15mb' }),
+  async (request, response) => {
+    const { taskId, imageIndex } = request.params
+
+    if (!/^(0|[1-9]\d*)$/.test(imageIndex)) {
+      response.status(400).json({
+        success: false,
+        message: 'Image index must be a non-negative integer',
+      })
+      return
+    }
+
+    const index = Number(imageIndex)
+    if (!Number.isSafeInteger(index)) {
+      response.status(400).json({
+        success: false,
+        message: 'Image index must be a non-negative integer',
+      })
+      return
+    }
+
+    const generationTask = getGenerationTask(taskId)
+    if (!generationTask) {
+      response.status(404).json({
+        success: false,
+        message: 'Generation task not found',
+      })
+      return
+    }
+
+    if (generationTask.status !== 'succeeded') {
+      response.status(409).json({
+        success: false,
+        message: 'Generation task has not succeeded',
+      })
+      return
+    }
+
+    const sourceImage = generationTask.result?.images[index]
+    const sourceFilename = sourceImage
+      ? getStoredImageFilename(sourceImage.url)
+      : null
+    if (!sourceImage || !sourceFilename || !(await readStoredImage(sourceFilename))) {
+      response.status(404).json({
+        success: false,
+        message: 'Generated image not found',
+      })
+      return
+    }
+
+    if (!request.is('image/png')) {
+      response.status(415).json({
+        success: false,
+        message: 'Content-Type must be image/png',
+      })
+      return
+    }
+
+    const requestBody: unknown = request.body
+    const pngSignature = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+    if (
+      !Buffer.isBuffer(requestBody) ||
+      requestBody.length === 0 ||
+      requestBody.length < pngSignature.length ||
+      !requestBody.subarray(0, pngSignature.length).equals(pngSignature)
+    ) {
+      response.status(400).json({
+        success: false,
+        message: 'Request body must contain a valid PNG image',
+      })
+      return
+    }
+
+    const editId = randomUUID()
+    let filename: string | null = null
+
+    try {
+      filename = await saveEditedImage(taskId, editId, requestBody)
+      const createdAt = new Date().toISOString()
+      const editedImage: GenerationImage = {
+        url: `/api/images/${filename}`,
+        kind: 'edited',
+        createdAt,
+        sourceImageIndex: index,
+      }
+      const updatedTask: GenerationTask = {
+        ...generationTask,
+        result: {
+          images: [...(generationTask.result?.images ?? []), editedImage],
+        },
+      }
+      const updatedTasks = getAllGenerationTasks().map((task) =>
+        task.taskId === taskId ? updatedTask : task,
+      )
+
+      await saveGenerationTasks(updatedTasks)
+      saveGenerationTask(updatedTask)
+
+      response.status(201).json({
+        success: true,
+        message: 'Edited image saved',
+        data: {
+          taskId,
+          imageIndex: updatedTask.result.images.length - 1,
+          image: editedImage,
+        },
+      })
+    } catch {
+      if (filename) {
+        await deleteStoredImage(filename)
+      }
+
+      response.status(500).json({
+        success: false,
+        message: 'Unable to save edited image',
+      })
+    }
+  },
+)
+
+generationsRouter.delete('/:taskId/images/:imageIndex', async (request, response) => {
+  const { taskId, imageIndex } = request.params
+  if (!/^(0|[1-9]\d*)$/.test(imageIndex)) {
+    response.status(404).json({ success: false, message: 'Generated image not found' })
+    return
+  }
+  const index = Number(imageIndex)
+  const task = getGenerationTask(taskId)
+  if (!task) {
+    response.status(404).json({ success: false, message: 'Generation task not found' })
+    return
+  }
+  const image = task.result?.images[index]
+  if (!image) {
+    response.status(404).json({ success: false, message: 'Generated image not found' })
+    return
+  }
+  const filename = getStoredImageFilename(image.url)
+  if (!filename) {
+    response.status(404).json({ success: false, message: 'Generated image not found' })
+    return
+  }
+
+  const remainingImages = task.result?.images.filter((_, currentIndex) => currentIndex !== index) ?? []
+  const taskDeleted = remainingImages.length === 0
+  const updatedTasks = getAllGenerationTasks().filter((currentTask) => currentTask.taskId !== taskId)
+  if (!taskDeleted) {
+    updatedTasks.push({ ...task, result: { images: remainingImages } })
+  }
+
+  try {
+    await saveGenerationTasks(updatedTasks)
+    await deleteStoredImage(filename)
+    if (taskDeleted) {
+      deleteGenerationTask(taskId)
+    } else {
+      saveGenerationTask({ ...task, result: { images: remainingImages } })
+    }
+    response.status(200).json({
+      success: true,
+      message: 'Image deleted',
+      data: { taskId, deletedImageIndex: index, taskDeleted },
+    })
+  } catch {
+    response.status(500).json({ success: false, message: 'Unable to delete image' })
+  }
 })
 
 generationsRouter.get('/:taskId/images/:imageIndex/download', async (request, response) => {

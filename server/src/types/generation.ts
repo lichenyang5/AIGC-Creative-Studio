@@ -36,6 +36,9 @@ export interface GenerationImage {
   url: string
   width?: number
   height?: number
+  kind?: 'generated' | 'edited'
+  createdAt?: string
+  sourceImageIndex?: number
 }
 
 export interface GenerationTask {
