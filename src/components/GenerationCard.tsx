@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { createApiUrl } from '../config/api'
 import {
   type GeneratedImage,
@@ -100,6 +101,12 @@ export function GenerationCard({
         </dl>
 
         <div className="library-card-actions">
+          <Link
+            className="image-action-button image-action-link"
+            to={`/editor/${task.taskId}/${imageIndex}`}
+          >
+            编辑
+          </Link>
           <button
             type="button"
             className="image-action-button"

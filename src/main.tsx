@@ -11,6 +11,7 @@ import './index.css'
 import App from './App.tsx'
 import { Header } from './components/Header.tsx'
 import { createApiUrl } from './config/api.ts'
+import { EditorPage } from './pages/EditorPage.tsx'
 import { LibraryPage } from './pages/LibraryPage.tsx'
 import type { HealthCheckResponse, ServiceStatus } from './types/health.ts'
 
@@ -68,6 +69,7 @@ createRoot(document.getElementById('root')!).render(
         <Route element={<AppLayout />}>
           <Route path="/create" element={<App />} />
           <Route path="/library" element={<LibraryPage />} />
+          <Route path="/editor/:taskId/:imageIndex" element={<EditorPage />} />
         </Route>
         <Route path="*" element={<Navigate to="/create" replace />} />
       </Routes>
