@@ -1,5 +1,8 @@
 import { useState } from 'react'
-import type { GenerationTask } from '../types/generationApi'
+import { createApiUrl } from '../config/api'
+import {
+  type GenerationTask,
+} from '../types/generationApi'
 
 interface ResultPreviewProps {
   isGenerating: boolean
@@ -26,11 +29,6 @@ const formatCreatedAt = (createdAt: string): string => {
   return new Date(createdAt).toLocaleString('zh-CN')
 }
 
-const resolveImageUrl = (imageUrl: string): string =>
-  imageUrl.startsWith('/api/images/')
-    ? `http://localhost:3001${imageUrl}`
-    : imageUrl
-
 export function ResultPreview({
   isGenerating,
   task,
@@ -53,7 +51,7 @@ export function ResultPreview({
 
     try {
       const response = await fetch(
-        `http://localhost:3001/api/generations/${taskId}/images/${imageIndex}/download`,
+        createApiUrl(`/api/generations/${taskId}/images/${imageIndex}/download`),
       )
 
       if (!response.ok) {
@@ -156,7 +154,11 @@ export function ResultPreview({
                 {task.result.images.map((image, index) => (
                   <article className="generated-image-card" key={`${image.url}-${index}`}>
                     <img
-                      src={resolveImageUrl(image.url)}
+                      src={
+                        image.url.startsWith('/')
+                          ? createApiUrl(image.url)
+                          : image.url
+                      }
                       alt={`生成任务 ${task.taskId} 的第 ${index + 1} 张图片`}
                     />
                     <div className="generated-image-actions">
@@ -173,7 +175,9 @@ export function ResultPreview({
                         className="image-action-button"
                         onClick={() =>
                           window.open(
-                            resolveImageUrl(image.url),
+                            image.url.startsWith('/')
+                              ? createApiUrl(image.url)
+                              : image.url,
                             '_blank',
                             'noopener,noreferrer',
                           )

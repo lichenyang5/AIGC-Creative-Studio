@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import './App.css'
 import { GenerationForm } from './components/GenerationForm'
-import { Header } from './components/Header'
 import { ResultPreview } from './components/ResultPreview'
+import { createApiUrl } from './config/api'
 import type {
   GenerationApiErrorResponse,
   GenerationApiSuccessResponse,
@@ -13,7 +13,6 @@ import type {
   GenerationTaskQuerySuccessResponse,
 } from './types/generationApi'
 import type { GenerationFormData } from './types/generation'
-import type { HealthCheckResponse, ServiceStatus } from './types/health'
 
 const initialFormData: GenerationFormData = {
   prompt: '',
@@ -41,24 +40,8 @@ function App() {
   const [generationError, setGenerationError] = useState<string | null>(null)
   const [isManualRefresh, setIsManualRefresh] = useState(false)
   const [refreshError, setRefreshError] = useState<string | null>(null)
-  const [serviceStatus, setServiceStatus] = useState<ServiceStatus>('checking')
   const isTaskQueryingRef = useRef(false)
   const stoppedPollingTaskIdRef = useRef<string | null>(null)
-
-  useEffect(() => {
-    const checkHealth = async () => {
-      try {
-        const response = await fetch('http://localhost:3001/api/health')
-        const data = (await response.json()) as HealthCheckResponse
-
-        setServiceStatus(response.ok && data.success ? 'online' : 'offline')
-      } catch {
-        setServiceStatus('offline')
-      }
-    }
-
-    void checkHealth()
-  }, [])
 
   const requestTaskStatus = useCallback(
     async (
@@ -77,7 +60,7 @@ function App() {
 
       try {
         const response = await fetch(
-          `http://localhost:3001/api/generations/${taskId}`,
+          createApiUrl(`/api/generations/${taskId}`),
         )
         const data = (await response.json()) as
           | GenerationTaskQuerySuccessResponse
@@ -175,14 +158,21 @@ function App() {
     }
 
     try {
-      const response = await fetch('http://localhost:3001/api/generations', {
+      const response = await fetch(createApiUrl('/api/generations'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(requestPayload),
       })
-      const data = (await response.json()) as
-        | GenerationApiSuccessResponse
-        | GenerationApiErrorResponse
+      let data: GenerationApiSuccessResponse | GenerationApiErrorResponse
+
+      try {
+        data = (await response.json()) as
+          | GenerationApiSuccessResponse
+          | GenerationApiErrorResponse
+      } catch {
+        setGenerationError(`生成请求失败（HTTP ${response.status}）`)
+        return
+      }
 
       if (response.status === 202 && data.success) {
         setGenerationTask({ ...data.data, createdAt: '' })
@@ -190,8 +180,10 @@ function App() {
       }
 
       const errorData = data as GenerationApiErrorResponse
+      const errorMessage =
+        errorData.errors?.[0]?.message ?? errorData.message ?? '提交生成任务失败'
       setGenerationError(
-        errorData.errors?.[0]?.message ?? errorData.message ?? '提交生成任务失败',
+        `生成请求失败（HTTP ${response.status}）：${errorMessage}`,
       )
     } catch {
       setGenerationError('无法连接图片生成服务，请稍后重试')
@@ -209,26 +201,23 @@ function App() {
   }
 
   return (
-    <div className="app-shell">
-      <Header serviceStatus={serviceStatus} />
-      <main className="workspace">
-        <GenerationForm
-          formData={formData}
-          onChange={setFormData}
-          onSubmit={handleSubmit}
-          isGenerating={isGenerating}
-        />
-        <ResultPreview
-          isGenerating={isGenerating}
-          task={generationTask}
-          error={generationError}
-          isManualRefresh={isManualRefresh}
-          refreshError={refreshError}
-          onRefreshTask={handleRefreshTask}
-          onRetryGeneration={() => void handleSubmit()}
-        />
-      </main>
-    </div>
+    <main className="workspace">
+      <GenerationForm
+        formData={formData}
+        onChange={setFormData}
+        onSubmit={handleSubmit}
+        isGenerating={isGenerating}
+      />
+      <ResultPreview
+        isGenerating={isGenerating}
+        task={generationTask}
+        error={generationError}
+        isManualRefresh={isManualRefresh}
+        refreshError={refreshError}
+        onRefreshTask={handleRefreshTask}
+        onRetryGeneration={() => void handleSubmit()}
+      />
+    </main>
   )
 }
 

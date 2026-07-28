@@ -1,3 +1,4 @@
+import { NavLink } from 'react-router-dom'
 import type { ServiceStatus } from '../types/health'
 
 interface HeaderProps {
@@ -6,8 +7,8 @@ interface HeaderProps {
 
 const serviceStatusText: Record<ServiceStatus, string> = {
   checking: '服务检测中',
-  online: '服务正常',
-  offline: '服务未连接',
+  connected: '服务正常',
+  disconnected: '服务未连接',
 }
 
 export function Header({ serviceStatus }: HeaderProps) {
@@ -29,14 +30,30 @@ export function Header({ serviceStatus }: HeaderProps) {
           </div>
         </div>
 
+        <nav className="header-navigation" aria-label="主导航">
+          <NavLink
+            className={({ isActive }) =>
+              `header-nav-link${isActive ? ' is-active' : ''}`
+            }
+            to="/create"
+          >
+            图片创作
+          </NavLink>
+          <NavLink
+            className={({ isActive }) =>
+              `header-nav-link${isActive ? ' is-active' : ''}`
+            }
+            to="/library"
+          >
+            生成库
+          </NavLink>
+        </nav>
+
         <div className="header-actions">
           <p className={`service-status is-${serviceStatus}`} role="status">
             <span className="service-status-dot" aria-hidden="true" />
             {serviceStatusText[serviceStatus]}
           </p>
-          <button type="button" className="history-button">
-            生成历史
-          </button>
         </div>
       </div>
     </header>

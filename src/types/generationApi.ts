@@ -70,3 +70,19 @@ export interface GenerationTaskQueryErrorResponse {
   success: false
   message: string
 }
+
+export interface GenerationListResponse {
+  success: true
+  data: {
+    items: GenerationTask[]
+    total: number
+    limit: number
+    offset: number
+    hasMore: boolean
+  }
+}
+
+export interface GenerationListErrorResponse {
+  success: false
+  message: string
+}

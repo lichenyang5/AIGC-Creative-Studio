@@ -3,4 +3,4 @@ export interface HealthCheckResponse {
   message: string
 }
 
-export type ServiceStatus = 'checking' | 'online' | 'offline'
+export type ServiceStatus = 'checking' | 'connected' | 'disconnected'
