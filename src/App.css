@@ -452,6 +452,40 @@ select.field-control {
   color: #248154;
 }
 
+.refresh-task-button {
+  width: 100%;
+  min-height: 40px;
+  margin-top: 16px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--primary-color);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: border-color 160ms ease, background-color 160ms ease;
+}
+
+.refresh-task-button:hover {
+  border-color: var(--primary-color);
+  background: var(--primary-soft);
+}
+
+.refresh-task-button:disabled {
+  border-color: var(--border-color);
+  background: #f3f5f9;
+  color: var(--muted-color);
+  cursor: not-allowed;
+}
+
+.refresh-error {
+  margin: 10px 0 0;
+  color: #bd3e48;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
 @keyframes loading-spin {
   to {
     transform: rotate(360deg);

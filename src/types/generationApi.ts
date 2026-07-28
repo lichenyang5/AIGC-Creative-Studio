@@ -19,12 +19,15 @@ export interface GenerationTask {
   taskId: string
   status: 'pending'
   request: GenerationRequestPayload
+  createdAt: string
 }
+
+export type GenerationCreationTask = Omit<GenerationTask, 'createdAt'>
 
 export interface GenerationApiSuccessResponse {
   success: true
   message: 'Generation request accepted'
-  data: GenerationTask
+  data: GenerationCreationTask
 }
 
 export interface GenerationApiValidationError {
@@ -36,4 +39,14 @@ export interface GenerationApiErrorResponse {
   success: false
   message: string
   errors?: GenerationApiValidationError[]
+}
+
+export interface GenerationTaskQuerySuccessResponse {
+  success: true
+  data: GenerationTask
+}
+
+export interface GenerationTaskQueryErrorResponse {
+  success: false
+  message: string
 }

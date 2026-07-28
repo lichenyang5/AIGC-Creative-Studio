@@ -9,6 +9,8 @@ import type {
   GenerationRequestPayload,
   GenerationStyle,
   GenerationTask,
+  GenerationTaskQueryErrorResponse,
+  GenerationTaskQuerySuccessResponse,
 } from './types/generationApi'
 import type { GenerationFormData } from './types/generation'
 import type { HealthCheckResponse, ServiceStatus } from './types/health'
@@ -34,6 +36,8 @@ function App() {
   const [isGenerating, setIsGenerating] = useState(false)
   const [generationTask, setGenerationTask] = useState<GenerationTask | null>(null)
   const [generationError, setGenerationError] = useState<string | null>(null)
+  const [isRefreshingTask, setIsRefreshingTask] = useState(false)
+  const [refreshError, setRefreshError] = useState<string | null>(null)
   const [serviceStatus, setServiceStatus] = useState<ServiceStatus>('checking')
 
   useEffect(() => {
@@ -81,7 +85,7 @@ function App() {
         | GenerationApiErrorResponse
 
       if (response.status === 202 && data.success) {
-        setGenerationTask(data.data)
+        setGenerationTask({ ...data.data, createdAt: '' })
         return
       }
 
@@ -93,6 +97,37 @@ function App() {
       setGenerationError('无法连接图片生成服务，请稍后重试')
     } finally {
       setIsGenerating(false)
+    }
+  }
+
+  const handleRefreshTask = async () => {
+    if (!generationTask || isRefreshingTask) {
+      return
+    }
+
+    setIsRefreshingTask(true)
+    setRefreshError(null)
+
+    try {
+      const response = await fetch(
+        `http://localhost:3001/api/generations/${generationTask.taskId}`,
+      )
+      const data = (await response.json()) as
+        | GenerationTaskQuerySuccessResponse
+        | GenerationTaskQueryErrorResponse
+
+      if (response.ok && data.success) {
+        setGenerationTask(data.data)
+        return
+      }
+
+      setRefreshError(
+        'message' in data ? data.message : '查询任务状态失败',
+      )
+    } catch {
+      setRefreshError('无法连接任务查询服务，请稍后重试')
+    } finally {
+      setIsRefreshingTask(false)
     }
   }
 
@@ -110,6 +145,9 @@ function App() {
           isGenerating={isGenerating}
           task={generationTask}
           error={generationError}
+          isRefreshingTask={isRefreshingTask}
+          refreshError={refreshError}
+          onRefreshTask={handleRefreshTask}
         />
       </main>
     </div>

@@ -4,12 +4,26 @@ interface ResultPreviewProps {
   isGenerating: boolean
   task: GenerationTask | null
   error: string | null
+  isRefreshingTask: boolean
+  refreshError: string | null
+  onRefreshTask: () => Promise<void>
+}
+
+const formatCreatedAt = (createdAt: string): string => {
+  if (!createdAt) {
+    return '等待刷新'
+  }
+
+  return new Date(createdAt).toLocaleString('zh-CN')
 }
 
 export function ResultPreview({
   isGenerating,
   task,
   error,
+  isRefreshingTask,
+  refreshError,
+  onRefreshTask,
 }: ResultPreviewProps) {
   return (
     <section className="panel preview-panel" aria-labelledby="preview-title">
@@ -38,7 +52,20 @@ export function ResultPreview({
                 <dt>状态</dt>
                 <dd className="task-status">{task.status}</dd>
               </div>
+              <div>
+                <dt>创建时间</dt>
+                <dd>{formatCreatedAt(task.createdAt)}</dd>
+              </div>
             </dl>
+            <button
+              className="refresh-task-button"
+              type="button"
+              onClick={() => void onRefreshTask()}
+              disabled={isRefreshingTask}
+            >
+              {isRefreshingTask ? '查询中...' : '刷新状态'}
+            </button>
+            {refreshError && <p className="refresh-error" role="alert">{refreshError}</p>}
           </div>
         ) : error ? (
           <div className="error-state" role="alert">
