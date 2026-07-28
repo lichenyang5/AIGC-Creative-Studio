@@ -36,6 +36,10 @@ export interface GenerationTask {
   result?: {
     images: GeneratedImage[]
   }
+  error?: {
+    code?: string
+    message?: string
+  }
 }
 
 export type GenerationCreationTask = Omit<GenerationTask, 'createdAt'>

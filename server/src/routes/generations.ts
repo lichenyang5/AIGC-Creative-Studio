@@ -2,7 +2,15 @@ import { randomUUID } from 'node:crypto'
 import { Router } from 'express'
 import { WanxImageProvider } from '../providers/WanxImageProvider.js'
 import { ProviderError, type GenerateImageInput } from '../providers/types.js'
+import { saveGenerationTasks } from '../repositories/generationRepository.js'
 import {
+  getStoredImageFilename,
+  LocalImageStorageError,
+  readStoredImage,
+  saveGeneratedImages,
+} from '../storage/localImageStorage.js'
+import {
+  getAllGenerationTasks,
   getGenerationTask,
   saveGenerationTask,
   updateGenerationTask,
@@ -26,6 +34,14 @@ import {
 const generationsRouter = Router()
 
 type GenerationTaskError = NonNullable<GenerationTask['error']>
+
+const persistGenerationTasks = async (): Promise<void> => {
+  try {
+    await saveGenerationTasks(getAllGenerationTasks())
+  } catch {
+    console.error('Unable to persist generation task metadata')
+  }
+}
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -105,6 +121,14 @@ const validateGenerationRequest = (
 }
 
 const getSafeProviderError = (cause: unknown): GenerationTaskError => {
+  if (cause instanceof LocalImageStorageError) {
+    return {
+      code: cause.code,
+      message: cause.message,
+      retryable: true,
+    }
+  }
+
   if (cause instanceof ProviderError) {
     return {
       code: cause.code,
@@ -135,6 +159,7 @@ const runImageGeneration = async (
         retryable: false,
       },
     }))
+    await persistGenerationTasks()
     return
   }
 
@@ -147,6 +172,8 @@ const runImageGeneration = async (
     return
   }
 
+  await persistGenerationTasks()
+
   try {
     const provider = new WanxImageProvider()
     const providerInput: GenerateImageInput = {
@@ -154,15 +181,17 @@ const runImageGeneration = async (
       count: 1,
     }
     const result = await provider.generate(providerInput)
+    const images = await saveGeneratedImages(taskId, result.images)
 
     updateGenerationTask(taskId, (task) => ({
       ...task,
       status: 'succeeded',
       completedAt: new Date().toISOString(),
       result: {
-        images: result.images,
+        images,
       },
     }))
+    await persistGenerationTasks()
   } catch (cause: unknown) {
     const error = getSafeProviderError(cause)
 
@@ -172,10 +201,11 @@ const runImageGeneration = async (
       completedAt: new Date().toISOString(),
       error,
     }))
+    await persistGenerationTasks()
   }
 }
 
-generationsRouter.post('/', (request, response) => {
+generationsRouter.post('/', async (request, response) => {
   const body: unknown = request.body
   const errors = validateGenerationRequest(body)
 
@@ -217,6 +247,7 @@ generationsRouter.post('/', (request, response) => {
   }
 
   saveGenerationTask(generationTask)
+  await persistGenerationTasks()
 
   response.status(202).json(acceptedResponse)
   void runImageGeneration(generationTask.taskId, generationRequest)
@@ -269,34 +300,34 @@ generationsRouter.get('/:taskId/images/:imageIndex/download', async (request, re
     return
   }
 
-  try {
-    const upstreamResponse = await fetch(image.url)
+  const filename = getStoredImageFilename(image.url)
 
-    if (!upstreamResponse.ok) {
-      response.status(502).json({
-        success: false,
-        message: 'Unable to download generated image',
-      })
-      return
-    }
-
-    const imageBuffer = Buffer.from(await upstreamResponse.arrayBuffer())
-    const contentType = upstreamResponse.headers.get('content-type') || 'image/png'
-
-    response
-      .status(200)
-      .set({
-        'Content-Type': contentType,
-        'Content-Disposition': `attachment; filename="aigc-${taskId}-${index}.png"`,
-        'Cache-Control': 'no-store',
-      })
-      .send(imageBuffer)
-  } catch {
-    response.status(502).json({
+  if (!filename) {
+    response.status(404).json({
       success: false,
-      message: 'Unable to download generated image',
+      message: 'Generated image not found',
     })
+    return
   }
+
+  const imageBuffer = await readStoredImage(filename)
+
+  if (!imageBuffer) {
+    response.status(404).json({
+      success: false,
+      message: 'Generated image not found',
+    })
+    return
+  }
+
+  response
+    .status(200)
+    .set({
+      'Content-Type': 'image/png',
+      'Content-Disposition': `attachment; filename="aigc-${taskId}-${index}.png"`,
+      'Cache-Control': 'no-store',
+    })
+    .send(imageBuffer)
 })
 
 generationsRouter.get('/:taskId', (request, response) => {

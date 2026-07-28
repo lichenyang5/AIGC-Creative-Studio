@@ -5,9 +5,10 @@ interface ResultPreviewProps {
   isGenerating: boolean
   task: GenerationTask | null
   error: string | null
-  isRefreshingTask: boolean
+  isManualRefresh: boolean
   refreshError: string | null
   onRefreshTask: () => Promise<void>
+  onRetryGeneration: () => void
 }
 
 const taskStatusText: Record<GenerationTask['status'], string> = {
@@ -25,13 +26,19 @@ const formatCreatedAt = (createdAt: string): string => {
   return new Date(createdAt).toLocaleString('zh-CN')
 }
 
+const resolveImageUrl = (imageUrl: string): string =>
+  imageUrl.startsWith('/api/images/')
+    ? `http://localhost:3001${imageUrl}`
+    : imageUrl
+
 export function ResultPreview({
   isGenerating,
   task,
   error,
-  isRefreshingTask,
+  isManualRefresh,
   refreshError,
   onRefreshTask,
+  onRetryGeneration,
 }: ResultPreviewProps) {
   const [downloadingImageIndex, setDownloadingImageIndex] = useState<number | null>(null)
   const [imageDownloadError, setImageDownloadError] = useState<string | null>(null)
@@ -69,11 +76,13 @@ export function ResultPreview({
     }
   }
 
+  const hasImages = task?.status === 'succeeded' && (task.result?.images.length ?? 0) > 0
+
   return (
     <section className="panel preview-panel" aria-labelledby="preview-title">
       <div className="panel-heading">
-        <h2 id="preview-title">创作结果</h2>
-        <p>生成的图片将在此区域呈现</p>
+        <h2 id="preview-title">创作预览</h2>
+        <p>任务状态与生成结果将在此区域展示</p>
       </div>
 
       <div className="preview-stage">
@@ -85,42 +94,69 @@ export function ResultPreview({
           </div>
         ) : task ? (
           <div className="task-state" role="status">
-            <span className="task-state-icon" aria-hidden="true">✓</span>
-            <h3>任务已创建</h3>
+            <div className="task-summary">
+              <span className={`task-state-icon status-${task.status}`} aria-hidden="true">
+                {task.status === 'failed' ? '!' : '✓'}
+              </span>
+              <div>
+                <h3>{task.status === 'failed' ? '任务处理失败' : '任务已创建'}</h3>
+                <p className={`task-status status-${task.status}`}>
+                  {taskStatusText[task.status]}
+                </p>
+              </div>
+            </div>
+
             <dl className="task-details">
               <div>
                 <dt>Task ID</dt>
                 <dd>{task.taskId}</dd>
               </div>
               <div>
-                <dt>状态</dt>
-                <dd className="task-status">{taskStatusText[task.status]}</dd>
-              </div>
-              <div>
                 <dt>创建时间</dt>
                 <dd>{formatCreatedAt(task.createdAt)}</dd>
               </div>
             </dl>
-            <button
-              className="refresh-task-button"
-              type="button"
-              onClick={() => void onRefreshTask()}
-              disabled={isRefreshingTask}
-            >
-              {isRefreshingTask ? '查询中...' : '刷新状态'}
-            </button>
+
+            <div className="task-actions">
+              <button
+                className="refresh-task-button"
+                type="button"
+                onClick={() => void onRefreshTask()}
+                disabled={isManualRefresh}
+              >
+                {isManualRefresh ? '查询中...' : '刷新状态'}
+              </button>
+            </div>
+
             {refreshError && (
               <p className="refresh-error" role="alert">
                 {refreshError}
               </p>
             )}
 
-            {task.status === 'succeeded' && task.result?.images.length ? (
+            {task.status === 'failed' && (
+              <section className="task-failure" aria-labelledby="failure-title">
+                <h4 id="failure-title">生成失败</h4>
+                <p>
+                  {task.error?.message || '图片生成失败，请稍后重试'}
+                </p>
+                {task.error?.code && <code>{task.error.code}</code>}
+                <button
+                  className="retry-generation-button"
+                  type="button"
+                  onClick={onRetryGeneration}
+                >
+                  重新生成
+                </button>
+              </section>
+            )}
+
+            {hasImages && task.result ? (
               <div className="generated-images" aria-label="生成图片">
                 {task.result.images.map((image, index) => (
-                  <article className="generated-image-card" key={image.url}>
+                  <article className="generated-image-card" key={`${image.url}-${index}`}>
                     <img
-                      src={image.url}
+                      src={resolveImageUrl(image.url)}
                       alt={`生成任务 ${task.taskId} 的第 ${index + 1} 张图片`}
                     />
                     <div className="generated-image-actions">
@@ -136,7 +172,11 @@ export function ResultPreview({
                         type="button"
                         className="image-action-button"
                         onClick={() =>
-                          window.open(image.url, '_blank', 'noopener,noreferrer')
+                          window.open(
+                            resolveImageUrl(image.url),
+                            '_blank',
+                            'noopener,noreferrer',
+                          )
                         }
                       >
                         新窗口查看
@@ -144,13 +184,14 @@ export function ResultPreview({
                     </div>
                   </article>
                 ))}
-                {imageDownloadError && (
-                  <p className="image-download-error" role="alert">
-                    {imageDownloadError}
-                  </p>
-                )}
               </div>
             ) : null}
+
+            {imageDownloadError && (
+              <p className="image-download-error" role="alert">
+                {imageDownloadError}
+              </p>
+            )}
           </div>
         ) : error ? (
           <div className="error-state" role="alert">

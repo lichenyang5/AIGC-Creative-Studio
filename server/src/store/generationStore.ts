@@ -10,6 +10,17 @@ export const getGenerationTask = (
   taskId: string,
 ): GenerationTask | undefined => generationTasks.get(taskId)
 
+export const getAllGenerationTasks = (): GenerationTask[] =>
+  Array.from(generationTasks.values())
+
+export const restoreGenerationTasks = (tasks: GenerationTask[]): void => {
+  generationTasks.clear()
+
+  for (const task of tasks) {
+    generationTasks.set(task.taskId, task)
+  }
+}
+
 export const updateGenerationTask = (
   taskId: string,
   update: (task: GenerationTask) => GenerationTask,

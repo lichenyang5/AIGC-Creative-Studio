@@ -39,7 +39,7 @@ function App() {
   const [isGenerating, setIsGenerating] = useState(false)
   const [generationTask, setGenerationTask] = useState<GenerationTask | null>(null)
   const [generationError, setGenerationError] = useState<string | null>(null)
-  const [isRefreshingTask, setIsRefreshingTask] = useState(false)
+  const [isManualRefresh, setIsManualRefresh] = useState(false)
   const [refreshError, setRefreshError] = useState<string | null>(null)
   const [serviceStatus, setServiceStatus] = useState<ServiceStatus>('checking')
   const isTaskQueryingRef = useRef(false)
@@ -61,13 +61,18 @@ function App() {
   }, [])
 
   const requestTaskStatus = useCallback(
-    async (taskId: string): Promise<GenerationTask | 'busy' | null> => {
+    async (
+      taskId: string,
+      isManualRequest = false,
+    ): Promise<GenerationTask | 'busy' | null> => {
       if (isTaskQueryingRef.current) {
         return 'busy'
       }
 
       isTaskQueryingRef.current = true
-      setIsRefreshingTask(true)
+      if (isManualRequest) {
+        setIsManualRefresh(true)
+      }
       setRefreshError(null)
 
       try {
@@ -92,7 +97,9 @@ function App() {
         return null
       } finally {
         isTaskQueryingRef.current = false
-        setIsRefreshingTask(false)
+        if (isManualRequest) {
+          setIsManualRefresh(false)
+        }
       }
     },
     [],
@@ -198,7 +205,7 @@ function App() {
       return
     }
 
-    await requestTaskStatus(generationTask.taskId)
+    await requestTaskStatus(generationTask.taskId, true)
   }
 
   return (
@@ -215,9 +222,10 @@ function App() {
           isGenerating={isGenerating}
           task={generationTask}
           error={generationError}
-          isRefreshingTask={isRefreshingTask}
+          isManualRefresh={isManualRefresh}
           refreshError={refreshError}
           onRefreshTask={handleRefreshTask}
+          onRetryGeneration={() => void handleSubmit()}
         />
       </main>
     </div>
