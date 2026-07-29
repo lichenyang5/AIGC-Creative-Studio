@@ -1,0 +1,23 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: aigc
+      # Local development password only. Never use this password in production.
+      POSTGRES_PASSWORD: aigc_dev_password
+      POSTGRES_DB: aigc_studio
+      PGDATA: /var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    volumes:
+      - aigc_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aigc -d aigc_studio"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+volumes:
+  aigc_postgres_data:
