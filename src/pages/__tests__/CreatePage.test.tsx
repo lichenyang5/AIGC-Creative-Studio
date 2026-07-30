@@ -1,0 +1,154 @@
+import { act, cleanup, render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import App from '../../App'
+import { AppLayout } from '../../components/AppLayout'
+
+interface TaskFailure {
+  code?: string
+  message?: string
+}
+
+const taskId = 'frontend-test-task'
+
+const jsonResponse = (body: unknown, status = 200): Response =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: {
+      'Content-Type': 'application/json',
+    },
+  })
+
+const createTaskResponse = () =>
+  jsonResponse(
+    {
+      success: true,
+      message: 'Generation request accepted',
+      data: {
+        taskId,
+        status: 'pending',
+        request: {
+          prompt: '测试生成失败',
+          negativePrompt: '',
+          aspectRatio: '1:1',
+          count: 1,
+          style: 'realistic',
+        },
+        createdAt: '2026-07-30T00:00:00.000Z',
+      },
+    },
+    202,
+  )
+
+const failedTaskResponse = (error?: TaskFailure): Response =>
+  jsonResponse({
+    success: true,
+    data: {
+      taskId,
+      status: 'failed',
+      request: {
+        prompt: '测试生成失败',
+        negativePrompt: '',
+        aspectRatio: '1:1',
+        count: 1,
+        style: 'realistic',
+      },
+      createdAt: '2026-07-30T00:00:00.000Z',
+      completedAt: '2026-07-30T00:00:01.000Z',
+      ...(error === undefined ? {} : { error }),
+    },
+  })
+
+const createFetchMock = (failure?: TaskFailure): ReturnType<typeof vi.fn<typeof fetch>> =>
+  vi.fn<typeof fetch>((input, init) => {
+    const url = String(input)
+    const method = init?.method ?? 'GET'
+
+    if (method === 'GET' && url.endsWith('/api/health')) {
+      return Promise.resolve(
+        jsonResponse({
+          success: true,
+          message: 'AIGC Creative Studio API is running',
+        }),
+      )
+    }
+
+    if (method === 'POST' && url.endsWith('/api/generations')) {
+      return Promise.resolve(createTaskResponse())
+    }
+
+    if (method === 'GET' && url.endsWith(`/api/generations/${taskId}`)) {
+      return Promise.resolve(failedTaskResponse(failure))
+    }
+
+    throw new Error(`Unexpected fetch: ${method} ${url}`)
+  })
+
+const renderCreatePage = (): void => {
+  render(
+    <MemoryRouter initialEntries={['/create']}>
+      <Routes>
+        <Route element={<AppLayout />}>
+          <Route path="/create" element={<App />} />
+        </Route>
+      </Routes>
+    </MemoryRouter>,
+  )
+}
+
+const submitAndPollForFailure = async (
+  user: ReturnType<typeof userEvent.setup>,
+): Promise<void> => {
+  await user.type(screen.getByLabelText('Prompt'), '测试生成失败')
+  await user.click(screen.getByRole('button', { name: '开始生成' }))
+
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(0)
+  })
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(1_000)
+  })
+}
+
+afterEach(() => {
+  cleanup()
+  vi.restoreAllMocks()
+  vi.unstubAllGlobals()
+  vi.clearAllTimers()
+  vi.useRealTimers()
+})
+
+describe('CreatePage generation failures', () => {
+  it('shows the backend task failure reason', async () => {
+    vi.useFakeTimers()
+    const fetchMock = createFetchMock({
+      code: 'DataInspectionFailed',
+      message: '提示词未通过内容安全检查',
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+
+    renderCreatePage()
+    await submitAndPollForFailure(user)
+
+    expect(await screen.findByRole('heading', { name: '生成失败' })).toBeInTheDocument()
+    expect(screen.getByText('提示词未通过内容安全检查')).toBeInTheDocument()
+    expect(screen.getByText('DataInspectionFailed')).toBeInTheDocument()
+    expect(screen.queryByText('无法连接图片生成服务')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '开始生成' })).toBeEnabled()
+  })
+
+  it('shows the existing fallback message when no backend failure detail is provided', async () => {
+    vi.useFakeTimers()
+    const fetchMock = createFetchMock()
+    vi.stubGlobal('fetch', fetchMock)
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+
+    renderCreatePage()
+    await submitAndPollForFailure(user)
+
+    expect(await screen.findByRole('heading', { name: '生成失败' })).toBeInTheDocument()
+    expect(screen.getByText('图片生成失败，请稍后重试')).toBeInTheDocument()
+  })
+})
