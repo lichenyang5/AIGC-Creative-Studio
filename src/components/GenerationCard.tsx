@@ -41,6 +41,7 @@ export function GenerationCard({
 
   useEffect(() => {
     if (!isDeleteDialogOpen) return
+    const triggerElement = triggerRef.current
     const originalOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
     confirmButtonRef.current?.focus()
@@ -51,7 +52,7 @@ export function GenerationCard({
     return () => {
       document.body.style.overflow = originalOverflow
       window.removeEventListener('keydown', handleKeyDown)
-      triggerRef.current?.focus()
+      triggerElement?.focus()
     }
   }, [isDeleteDialogOpen, isDeleting])
 

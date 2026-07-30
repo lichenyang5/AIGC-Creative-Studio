@@ -42,6 +42,8 @@ function App() {
   const [refreshError, setRefreshError] = useState<string | null>(null)
   const isTaskQueryingRef = useRef(false)
   const stoppedPollingTaskIdRef = useRef<string | null>(null)
+  const generationTaskId = generationTask?.taskId
+  const generationTaskStatus = generationTask?.status
 
   const requestTaskStatus = useCallback(
     async (
@@ -67,7 +69,9 @@ function App() {
           | GenerationTaskQueryErrorResponse
 
         if (response.ok && data.success) {
-          setGenerationTask(data.data)
+          setGenerationTask((currentTask) =>
+            currentTask?.taskId === data.data.taskId ? data.data : currentTask,
+          )
           return data.data
         }
 
@@ -89,11 +93,15 @@ function App() {
   )
 
   useEffect(() => {
-    if (!generationTask || isTerminalStatus(generationTask.status)) {
+    if (
+      !generationTaskId ||
+      !generationTaskStatus ||
+      isTerminalStatus(generationTaskStatus)
+    ) {
       return
     }
 
-    const taskId = generationTask.taskId
+    const taskId = generationTaskId
     let isActive = true
     let timerId: number | undefined
 
@@ -134,7 +142,7 @@ function App() {
         window.clearTimeout(timerId)
       }
     }
-  }, [generationTask?.taskId, generationTask?.status, requestTaskStatus])
+  }, [generationTaskId, generationTaskStatus, requestTaskStatus])
 
   const handleSubmit = async () => {
     if (isGenerating) {

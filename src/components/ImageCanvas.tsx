@@ -1,5 +1,6 @@
 import {
   forwardRef,
+  useCallback,
   useEffect,
   useImperativeHandle,
   useRef,
@@ -42,7 +43,11 @@ export type ColorRippleState = 'ready' | 'dropping' | 'rippling' | 'completed' |
 
 type GradientOverlayStyle = CSSProperties & {
   '--gradient-position': string
-  '--ripple-y'?: string
+}
+
+type RippleMarkerStyle = CSSProperties & {
+  '--ripple-x': string
+  '--ripple-y': string
 }
 
 const clampPercentage = (value: number): number => Math.min(Math.max(value, 0), 100)
@@ -150,6 +155,9 @@ export const ImageCanvas = forwardRef<ImageCanvasHandle, ImageCanvasProps>(
   const colorRippleLastTimeRef = useRef<number | null>(null)
   const recordingCleanupRef = useRef<(() => void) | null>(null)
   const dragPointerIdRef = useRef<number | null>(null)
+  const colorRippleStateChangeRef = useRef(onColorRippleStateChange)
+  const colorRippleSpeedRef = useRef(colorRippleSpeed)
+  const colorRippleRangeRef = useRef(colorRippleRange)
   const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [imageVersion, setImageVersion] = useState(0)
@@ -164,6 +172,12 @@ export const ImageCanvas = forwardRef<ImageCanvasHandle, ImageCanvasProps>(
     opacity: rainOpacity,
     speed: rainSpeed,
   }
+  colorRippleSpeedRef.current = colorRippleSpeed
+  colorRippleRangeRef.current = colorRippleRange
+
+  useEffect(() => {
+    colorRippleStateChangeRef.current = onColorRippleStateChange
+  }, [onColorRippleStateChange])
 
   useEffect(() => {
     let isActive = true
@@ -293,23 +307,27 @@ export const ImageCanvas = forwardRef<ImageCanvasHandle, ImageCanvasProps>(
     }
   }, [])
 
-  const cancelRainAnimation = (): void => {
+  const cancelRainAnimation = useCallback((): void => {
     if (animationFrameRef.current !== null) {
       window.cancelAnimationFrame(animationFrameRef.current)
       animationFrameRef.current = null
     }
     lastFrameTimeRef.current = null
-  }
+  }, [])
 
-  const cancelColorRippleAnimation = (): void => {
+  const cancelColorRippleAnimation = useCallback((): void => {
     if (colorRippleFrameRef.current !== null) {
       window.cancelAnimationFrame(colorRippleFrameRef.current)
       colorRippleFrameRef.current = null
     }
     colorRippleLastTimeRef.current = null
-  }
+  }, [])
 
-  const drawColorRippleFrame = (deltaTime: number): void => {
+  const notifyColorRippleState = useCallback((state: ColorRippleState): void => {
+    colorRippleStateChangeRef.current(state)
+  }, [])
+
+  const drawColorRippleFrame = useCallback((deltaTime: number): void => {
     const canvas = canvasRef.current
     const colorCanvas = colorCanvasRef.current
     const grayscaleCanvas = grayscaleCanvasRef.current
@@ -319,7 +337,7 @@ export const ImageCanvas = forwardRef<ImageCanvasHandle, ImageCanvasProps>(
     if (!context) return
 
     context.drawImage(grayscaleCanvas, 0, 0)
-    const speed = Math.min(Math.max(colorRippleSpeed, 1), 10)
+    const speed = Math.min(Math.max(colorRippleSpeedRef.current, 1), 10)
     if (ripple.phase === 'dropping') {
       ripple.dropY += speed * 90 * deltaTime
       context.save()
@@ -333,7 +351,7 @@ export const ImageCanvas = forwardRef<ImageCanvasHandle, ImageCanvasProps>(
       if (ripple.dropY >= ripple.y) {
         ripple.phase = 'rippling'
         ripple.radius = 0
-        onColorRippleStateChange('rippling')
+        notifyColorRippleState('rippling')
       }
       return
     }
@@ -363,13 +381,13 @@ export const ImageCanvas = forwardRef<ImageCanvasHandle, ImageCanvasProps>(
         context.restore()
         if (ripple.radius >= ripple.maxRadius) {
           ripple.phase = 'completed'
-          onColorRippleStateChange('completed')
+          notifyColorRippleState('completed')
         }
       }
     }
-  }
+  }, [notifyColorRippleState])
 
-  const drawRainFrame = (deltaTime: number): void => {
+  const drawRainFrame = useCallback((deltaTime: number): void => {
     const canvas = canvasRef.current
     const originalImageData = originalImageDataRef.current
     const random = rainRandomRef.current
@@ -434,7 +452,7 @@ export const ImageCanvas = forwardRef<ImageCanvasHandle, ImageCanvasProps>(
     }
 
     context.restore()
-  }
+  }, [])
 
   useEffect(() => {
     if (mode !== 'rain') {
@@ -454,7 +472,7 @@ export const ImageCanvas = forwardRef<ImageCanvasHandle, ImageCanvasProps>(
     rainDropsRef.current = createRainDrops(random, canvas.width, canvas.height, 200)
     lastFrameTimeRef.current = null
     drawRainFrame(0)
-  }, [imageVersion, mode, rainSeed])
+  }, [cancelRainAnimation, drawRainFrame, imageVersion, mode, rainSeed])
 
   useEffect(() => {
     if (
@@ -490,13 +508,15 @@ export const ImageCanvas = forwardRef<ImageCanvasHandle, ImageCanvasProps>(
     isRainPlaying,
     loadError,
     mode,
+    cancelRainAnimation,
+    drawRainFrame,
   ])
 
   useEffect(() => {
     if (mode === 'rain' && originalImageDataRef.current) {
       drawRainFrame(0)
     }
-  }, [rainAmount, rainAngle, rainLength, rainOpacity, rainSpeed])
+  }, [drawRainFrame, mode, rainAmount, rainAngle, rainLength, rainOpacity, rainSpeed])
 
   useEffect(() => {
     if (mode !== 'colorRipple') {
@@ -509,8 +529,8 @@ export const ImageCanvas = forwardRef<ImageCanvasHandle, ImageCanvasProps>(
     ripple.radius = 0
     ripple.dropY = -30
     drawColorRippleFrame(0)
-    onColorRippleStateChange('ready')
-  }, [imageVersion, mode])
+    notifyColorRippleState('ready')
+  }, [cancelColorRippleAnimation, drawColorRippleFrame, imageVersion, mode, notifyColorRippleState])
 
   useEffect(() => {
     if (mode !== 'colorRipple' || colorRipplePlayId === 0) return
@@ -524,12 +544,14 @@ export const ImageCanvas = forwardRef<ImageCanvasHandle, ImageCanvasProps>(
       Math.hypot(ripple.x, canvas.height - ripple.y),
       Math.hypot(canvas.width - ripple.x, canvas.height - ripple.y),
     )
-    ripple.maxRadius = maxCornerDistance * (Math.min(Math.max(colorRippleRange, 20), 100) / 100)
+    ripple.maxRadius =
+      maxCornerDistance *
+      (Math.min(Math.max(colorRippleRangeRef.current, 20), 100) / 100)
     ripple.radius = 0
     ripple.dropY = -30
     ripple.phase = 'dropping'
-    onColorRippleStateChange('dropping')
-  }, [colorRipplePlayId])
+    notifyColorRippleState('dropping')
+  }, [cancelColorRippleAnimation, colorRipplePlayId, mode, notifyColorRippleState])
 
   useEffect(() => {
     if (mode !== 'colorRipple' || !isDocumentVisible) {
@@ -538,12 +560,12 @@ export const ImageCanvas = forwardRef<ImageCanvasHandle, ImageCanvasProps>(
     }
     if (isColorRipplePaused) {
       cancelColorRippleAnimation()
-      onColorRippleStateChange('paused')
+      notifyColorRippleState('paused')
       return
     }
     const ripple = colorRippleRef.current
     if (!ripple || (ripple.phase !== 'dropping' && ripple.phase !== 'rippling')) return
-    onColorRippleStateChange(ripple.phase)
+    notifyColorRippleState(ripple.phase)
     const renderFrame = (timestamp: number): void => {
       const previous = colorRippleLastTimeRef.current
       const deltaTime = previous === null ? 0 : Math.min((timestamp - previous) / 1000, 0.05)
@@ -558,7 +580,15 @@ export const ImageCanvas = forwardRef<ImageCanvasHandle, ImageCanvasProps>(
     }
     colorRippleFrameRef.current = window.requestAnimationFrame(renderFrame)
     return cancelColorRippleAnimation
-  }, [isColorRipplePaused, isDocumentVisible, mode, colorRipplePlayId])
+  }, [
+    cancelColorRippleAnimation,
+    colorRipplePlayId,
+    drawColorRippleFrame,
+    isColorRipplePaused,
+    isDocumentVisible,
+    mode,
+    notifyColorRippleState,
+  ])
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -653,9 +683,10 @@ export const ImageCanvas = forwardRef<ImageCanvasHandle, ImageCanvasProps>(
     imageUrl,
     imageVersion,
     mode,
+    drawColorRippleFrame,
   ])
 
-  const exportColorRippleVideo = (): Promise<Blob> =>
+  const exportColorRippleVideo = useCallback((): Promise<Blob> =>
     new Promise<Blob>((resolve, reject) => {
       const canvas = canvasRef.current
       const ripple = colorRippleRef.current
@@ -739,9 +770,11 @@ export const ImageCanvas = forwardRef<ImageCanvasHandle, ImageCanvasProps>(
         Math.hypot(ripple.x, canvas.height - ripple.y),
         Math.hypot(canvas.width - ripple.x, canvas.height - ripple.y),
       )
-      ripple.maxRadius = maxCornerDistance * (Math.min(Math.max(colorRippleRange, 20), 100) / 100)
+      ripple.maxRadius =
+        maxCornerDistance *
+        (Math.min(Math.max(colorRippleRangeRef.current, 20), 100) / 100)
       drawColorRippleFrame(0)
-      onColorRippleStateChange('dropping')
+      notifyColorRippleState('dropping')
 
       const recordFrame = (timestamp: number): void => {
         const previous = colorRippleLastTimeRef.current
@@ -755,32 +788,42 @@ export const ImageCanvas = forwardRef<ImageCanvasHandle, ImageCanvasProps>(
         colorRippleFrameRef.current = window.requestAnimationFrame(recordFrame)
       }
       colorRippleFrameRef.current = window.requestAnimationFrame(recordFrame)
-    })
+    }), [
+      cancelColorRippleAnimation,
+      drawColorRippleFrame,
+      mode,
+      notifyColorRippleState,
+    ])
+
+  const exportImage = useCallback(
+    (): Promise<Blob> =>
+      new Promise<Blob>((resolve, reject) => {
+        const canvas = canvasRef.current
+
+        if (!canvas || isLoading || loadError) {
+          reject(new Error('Canvas is not ready'))
+          return
+        }
+
+        canvas.toBlob((blob) => {
+          if (blob) {
+            resolve(blob)
+            return
+          }
+
+          reject(new Error('Canvas export failed'))
+        }, 'image/png')
+      }),
+    [isLoading, loadError],
+  )
 
   useImperativeHandle(
     ref,
     () => ({
-      exportImage: () =>
-        new Promise<Blob>((resolve, reject) => {
-          const canvas = canvasRef.current
-
-          if (!canvas || isLoading || loadError) {
-            reject(new Error('Canvas is not ready'))
-            return
-          }
-
-          canvas.toBlob((blob) => {
-            if (blob) {
-              resolve(blob)
-              return
-            }
-
-            reject(new Error('Canvas export failed'))
-          }, 'image/png')
-        }),
+      exportImage,
       exportColorRippleVideo,
     }),
-    [isLoading, loadError, mode, colorRippleRange],
+    [exportColorRippleVideo, exportImage],
   )
 
   const updateGradientPositionFromPointer = (clientX: number): void => {
@@ -812,7 +855,7 @@ export const ImageCanvas = forwardRef<ImageCanvasHandle, ImageCanvasProps>(
       ripple.radius = 0
       ripple.phase = 'ready'
       onColorRipplePointChange(true)
-      onColorRippleStateChange('ready')
+      notifyColorRippleState('ready')
       drawColorRippleFrame(0)
       event.stopPropagation()
       return
@@ -875,9 +918,11 @@ export const ImageCanvas = forwardRef<ImageCanvasHandle, ImageCanvasProps>(
   const colorRipple = colorRippleRef.current
   const isColorRippleMarkerVisible =
     mode === 'colorRipple' && !isLoading && !loadError && colorRipple !== null
-  const colorRippleMarkerStyle: GradientOverlayStyle | undefined = colorRipple
+  const rippleMarkerStyle: RippleMarkerStyle | undefined = colorRipple
     ? {
-        '--gradient-position': `${(colorRipple.x / (canvasRef.current?.width || 1)) * 100}%`,
+        '--ripple-x': `${(colorRipple.x / (canvasRef.current?.width || 1)) * 100}%`,
+        '--ripple-y': `${(colorRipple.y / (canvasRef.current?.height || 1)) * 100}%`,
+        left: 'var(--ripple-x)',
       }
     : undefined
 
@@ -919,13 +964,10 @@ export const ImageCanvas = forwardRef<ImageCanvasHandle, ImageCanvasProps>(
             />
           </div>
         )}
-        {isColorRippleMarkerVisible && colorRippleMarkerStyle && (
+        {isColorRippleMarkerVisible && rippleMarkerStyle && (
           <div
             className="color-ripple-marker"
-            style={{
-              ...colorRippleMarkerStyle,
-              '--ripple-y': `${(colorRipple.y / (canvasRef.current?.height || 1)) * 100}%`,
-            }}
+            style={rippleMarkerStyle}
             aria-hidden="true"
           />
         )}

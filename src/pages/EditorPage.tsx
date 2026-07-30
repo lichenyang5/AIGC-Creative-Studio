@@ -33,8 +33,24 @@ const shouldPlayRainByDefault = (): boolean =>
   typeof window === 'undefined' ||
   !window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
+interface EditorSessionProps {
+  taskId: string | undefined
+  imageIndexParam: string | undefined
+}
+
 export function EditorPage() {
   const { taskId, imageIndex: imageIndexParam } = useParams()
+
+  return (
+    <EditorSession
+      key={`${taskId ?? ''}:${imageIndexParam ?? ''}`}
+      taskId={taskId}
+      imageIndexParam={imageIndexParam}
+    />
+  )
+}
+
+function EditorSession({ taskId, imageIndexParam }: EditorSessionProps) {
   const [task, setTask] = useState<GenerationTask | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -107,30 +123,6 @@ export function EditorPage() {
   const handleColorRippleStateChange = useCallback((state: ColorRippleState) => {
     setColorRippleState(state)
   }, [])
-
-  useEffect(() => {
-    setEditMode('original')
-    setBlackWhiteIntensity(0)
-    setGradientPosition(50)
-    setGradientWidth(15)
-    setRainAmount(80)
-    setRainLength(25)
-    setRainAngle(-15)
-    setRainOpacity(40)
-    setRainSpeed(5)
-    setIsRainPlaying(shouldPlayRainByDefault())
-    setColorRippleRange(70)
-    setColorRippleSpeed(5)
-    setColorRippleState('ready')
-    setColorRipplePlayId(0)
-    setIsColorRipplePaused(false)
-    setHasColorRipplePoint(false)
-    setIsCanvasReady(false)
-    setExportMessage(null)
-    setSaveMessage(null)
-    setIsSaveError(false)
-    setHasSavedEdit(false)
-  }, [taskId, imageIndexParam])
 
   useEffect(() => {
     let isActive = true
