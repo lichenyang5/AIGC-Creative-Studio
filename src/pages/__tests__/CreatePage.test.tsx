@@ -1,4 +1,4 @@
-import { act, cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
@@ -97,40 +97,31 @@ const renderCreatePage = (): void => {
   )
 }
 
-const submitAndPollForFailure = async (
+const submitAndRefreshForFailure = async (
   user: ReturnType<typeof userEvent.setup>,
 ): Promise<void> => {
   await user.type(screen.getByLabelText('Prompt'), '测试生成失败')
   await user.click(screen.getByRole('button', { name: '开始生成' }))
-
-  await act(async () => {
-    await vi.advanceTimersByTimeAsync(0)
-  })
-  await act(async () => {
-    await vi.advanceTimersByTimeAsync(1_000)
-  })
+  await user.click(await screen.findByRole('button', { name: /刷新状态/ }))
 }
 
 afterEach(() => {
   cleanup()
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
-  vi.clearAllTimers()
-  vi.useRealTimers()
 })
 
 describe('CreatePage generation failures', () => {
   it('shows the backend task failure reason', async () => {
-    vi.useFakeTimers()
     const fetchMock = createFetchMock({
       code: 'DataInspectionFailed',
       message: '提示词未通过内容安全检查',
     })
     vi.stubGlobal('fetch', fetchMock)
-    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    const user = userEvent.setup()
 
     renderCreatePage()
-    await submitAndPollForFailure(user)
+    await submitAndRefreshForFailure(user)
 
     expect(await screen.findByRole('heading', { name: '生成失败' })).toBeInTheDocument()
     expect(screen.getByText('提示词未通过内容安全检查')).toBeInTheDocument()
@@ -140,13 +131,12 @@ describe('CreatePage generation failures', () => {
   })
 
   it('shows the existing fallback message when no backend failure detail is provided', async () => {
-    vi.useFakeTimers()
     const fetchMock = createFetchMock()
     vi.stubGlobal('fetch', fetchMock)
-    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    const user = userEvent.setup()
 
     renderCreatePage()
-    await submitAndPollForFailure(user)
+    await submitAndRefreshForFailure(user)
 
     expect(await screen.findByRole('heading', { name: '生成失败' })).toBeInTheDocument()
     expect(screen.getByText('图片生成失败，请稍后重试')).toBeInTheDocument()
