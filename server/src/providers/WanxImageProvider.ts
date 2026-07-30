@@ -45,6 +45,8 @@ interface WanxTaskResult {
 interface WanxTaskQueryResponse extends WanxApiErrorResponse {
   output?: {
     task_status?: string
+    code?: string | number
+    message?: string
     results?: WanxTaskResult[]
   }
 }
@@ -185,8 +187,11 @@ export class WanxImageProvider implements ImageGenerationProvider {
 
       if (status === 'FAILED' || status === 'CANCELED' || status === 'UNKNOWN') {
         throw new ProviderError({
-          code: `DASHSCOPE_TASK_${status}`,
-          message: response.message ?? `DashScope task ${status.toLowerCase()}`,
+          code: String(response.output?.code ?? `DASHSCOPE_TASK_${status}`),
+          message:
+            response.output?.message ??
+            response.message ??
+            `DashScope task ${status.toLowerCase()}`,
           retryable: false,
         })
       }
