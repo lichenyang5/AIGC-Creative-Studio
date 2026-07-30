@@ -399,7 +399,16 @@ generationsRouter.post(
       return
     }
 
-    const sourceImage = generationTask.result?.images[index]
+    const existingImages = generationTask.result?.images
+    if (!existingImages) {
+      response.status(409).json({
+        success: false,
+        message: 'Generation task has no images',
+      })
+      return
+    }
+
+    const sourceImage = existingImages[index]
     const sourceFilename = sourceImage
       ? getStoredImageFilename(sourceImage.url)
       : null
@@ -435,6 +444,7 @@ generationsRouter.post(
     }
 
     const editId = randomUUID()
+    const savedImageIndex = existingImages.length
     let filename: string | null = null
 
     try {
@@ -449,7 +459,7 @@ generationsRouter.post(
       const updatedTask: GenerationTask = {
         ...generationTask,
         result: {
-          images: [...(generationTask.result?.images ?? []), editedImage],
+          images: [...existingImages, editedImage],
         },
       }
       const updatedTasks = getAllGenerationTasks().map((task) =>
@@ -464,7 +474,7 @@ generationsRouter.post(
         message: 'Edited image saved',
         data: {
           taskId,
-          imageIndex: updatedTask.result.images.length - 1,
+          imageIndex: savedImageIndex,
           image: editedImage,
         },
       })
