@@ -6,9 +6,18 @@ vi.hoisted(() => {
   process.env.JWT_SECRET = 'generation-ownership-test-secret-at-least-32-characters'
 })
 
+const repositoryMocks = vi.hoisted(() => ({
+  deleteGenerationTaskFromPostgres: vi.fn(async () => undefined),
+  findGenerationTaskForUser: vi.fn(),
+  isStoredImageOwnedByUser: vi.fn(async () => false),
+  listGenerationTasksForUser: vi.fn(),
+  saveGenerationTaskToPostgres: vi.fn(async () => undefined),
+}))
+
+vi.mock('../repositories/postgresGenerationRepository.js', () => repositoryMocks)
+
 import { app } from '../app.js'
 import { createAuthToken } from '../auth/token.js'
-import { restoreGenerationTasks } from '../store/generationStore.js'
 import type { GenerationTask } from '../types/generation.js'
 
 const firstUserId = '00000000-0000-4000-8000-000000000011'
@@ -32,14 +41,21 @@ const createTask = (taskId: string, userId: string): GenerationTask => ({
 
 describe('generation ownership', () => {
   beforeEach(() => {
-    restoreGenerationTasks([
+    const tasks = [
       createTask('00000000-0000-4000-8000-000000000101', firstUserId),
       createTask('00000000-0000-4000-8000-000000000202', secondUserId),
-    ])
+    ]
+    repositoryMocks.listGenerationTasksForUser.mockImplementation(async (userId: string) =>
+      tasks.filter((task) => task.userId === userId),
+    )
+    repositoryMocks.findGenerationTaskForUser.mockImplementation(
+      async (taskId: string, userId: string) =>
+        tasks.find((task) => task.taskId === taskId && task.userId === userId),
+    )
   })
 
   afterEach(() => {
-    restoreGenerationTasks([])
+    vi.clearAllMocks()
   })
 
   it('lists only the authenticated user’s tasks', async () => {

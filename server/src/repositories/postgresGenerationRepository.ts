@@ -29,6 +29,7 @@ interface GenerationImageRow {
   generation_task_id: string
   storage_key: string
   kind: 'generated' | 'edited' | 'imported'
+  position: number
   created_at: Date
   source_image_id: string | null
 }
@@ -109,8 +110,8 @@ export const saveGenerationTaskToPostgres = async (task: GenerationTask): Promis
       await client.query(
         `INSERT INTO images (
           id, user_id, generation_task_id, kind, storage_key, mime_type,
-          source_image_id, created_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+          source_image_id, position, created_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
         [
           imageIds[index],
           task.userId,
@@ -119,6 +120,7 @@ export const saveGenerationTaskToPostgres = async (task: GenerationTask): Promis
           storageKey,
           'image/png',
           sourceImageId,
+          index,
           image.createdAt ?? task.completedAt ?? task.createdAt,
         ],
       )
@@ -133,30 +135,18 @@ export const saveGenerationTaskToPostgres = async (task: GenerationTask): Promis
   }
 }
 
-export const loadGenerationTasksFromPostgres = async (): Promise<GenerationTask[]> => {
-  const pool = getDatabasePool()
-  const [taskResult, imageResult] = await Promise.all([
-    pool.query<GenerationTaskRow>(
-      `SELECT id, user_id, status, prompt, negative_prompt, aspect_ratio, image_count,
-        seed, style, error_code, error_message, created_at, completed_at
-       FROM generation_tasks
-       ORDER BY created_at DESC`,
-    ),
-    pool.query<GenerationImageRow>(
-      `SELECT id, generation_task_id, storage_key, kind, created_at, source_image_id
-       FROM images
-       ORDER BY created_at ASC, id ASC`,
-    ),
-  ])
-
+const toGenerationTasks = (
+  tasks: GenerationTaskRow[],
+  storedImageRows: GenerationImageRow[],
+): GenerationTask[] => {
   const imagesByTaskId = new Map<string, GenerationImageRow[]>()
-  for (const image of imageResult.rows) {
+  for (const image of storedImageRows) {
     const taskImages = imagesByTaskId.get(image.generation_task_id) ?? []
     taskImages.push(image)
     imagesByTaskId.set(image.generation_task_id, taskImages)
   }
 
-  return taskResult.rows.map((task) => {
+  return tasks.map((task) => {
     const storedImages = imagesByTaskId.get(task.id) ?? []
     const indexByImageId = new Map(storedImages.map((image, index) => [image.id, index]))
     const images: GenerationImage[] = storedImages.map((image) => ({
@@ -194,6 +184,70 @@ export const loadGenerationTasksFromPostgres = async (): Promise<GenerationTask[
           }),
     }
   })
+}
+
+const queryGenerationTasks = async (
+  whereClause: string,
+  values: unknown[],
+): Promise<GenerationTask[]> => {
+  const client = await getDatabasePool().connect()
+  try {
+    await client.query('BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
+    const taskResult = await client.query<GenerationTaskRow>(
+      `SELECT id, user_id, status, prompt, negative_prompt, aspect_ratio, image_count,
+        seed, style, error_code, error_message, created_at, completed_at
+       FROM generation_tasks
+       WHERE ${whereClause}
+       ORDER BY created_at DESC`,
+      values,
+    )
+    if (taskResult.rows.length === 0) {
+      await client.query('COMMIT')
+      return []
+    }
+
+    const imageResult = await client.query<GenerationImageRow>(
+      `SELECT id, generation_task_id, storage_key, kind, position, created_at, source_image_id
+       FROM images
+       WHERE generation_task_id = ANY($1::uuid[])
+       ORDER BY position ASC`,
+      [taskResult.rows.map((task) => task.id)],
+    )
+    await client.query('COMMIT')
+    return toGenerationTasks(taskResult.rows, imageResult.rows)
+  } catch (error) {
+    await client.query('ROLLBACK')
+    throw error
+  } finally {
+    client.release()
+  }
+}
+
+export const listGenerationTasksForUser = async (
+  userId: string,
+  status?: GenerationStatus,
+): Promise<GenerationTask[]> => queryGenerationTasks(
+  status === undefined ? 'user_id = $1' : 'user_id = $1 AND status = $2',
+  status === undefined ? [userId] : [userId, status],
+)
+
+export const findGenerationTaskForUser = async (
+  taskId: string,
+  userId: string,
+): Promise<GenerationTask | undefined> => {
+  const tasks = await queryGenerationTasks('id = $1 AND user_id = $2', [taskId, userId])
+  return tasks[0]
+}
+
+export const isStoredImageOwnedByUser = async (
+  storageKey: string,
+  userId: string,
+): Promise<boolean> => {
+  const result = await getDatabasePool().query(
+    'SELECT 1 FROM images WHERE storage_key = $1 AND user_id = $2 LIMIT 1',
+    [storageKey, userId],
+  )
+  return result.rowCount === 1
 }
 
 export const deleteGenerationTaskFromPostgres = async (

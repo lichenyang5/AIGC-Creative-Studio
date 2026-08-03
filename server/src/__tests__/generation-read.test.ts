@@ -8,6 +8,16 @@ vi.hoisted(() => {
   process.env.JWT_SECRET = 'generation-read-test-secret-at-least-32-characters'
 })
 
+const repositoryMocks = vi.hoisted(() => ({
+  deleteGenerationTaskFromPostgres: vi.fn(async () => undefined),
+  findGenerationTaskForUser: vi.fn(async () => undefined),
+  isStoredImageOwnedByUser: vi.fn(async () => false),
+  listGenerationTasksForUser: vi.fn(async () => []),
+  saveGenerationTaskToPostgres: vi.fn(async () => undefined),
+}))
+
+vi.mock('../repositories/postgresGenerationRepository.js', () => repositoryMocks)
+
 import { app } from '../app.js'
 import { createAuthToken } from '../auth/token.js'
 
