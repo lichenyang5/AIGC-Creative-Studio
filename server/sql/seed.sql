@@ -1,0 +1,3 @@
+-- Intentionally empty by default.
+-- Add only non-sensitive, reproducible demo records here.
+-- Password hashes and real user data must not be committed.
