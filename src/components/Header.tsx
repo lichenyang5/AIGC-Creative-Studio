@@ -1,4 +1,5 @@
 import { NavLink } from 'react-router-dom'
+import { useAuth } from '../contexts/authStore'
 import type { ServiceStatus } from '../types/health'
 
 interface HeaderProps {
@@ -12,6 +13,7 @@ const serviceStatusText: Record<ServiceStatus, string> = {
 }
 
 export function Header({ serviceStatus }: HeaderProps) {
+  const { user, logout } = useAuth()
   return (
     <header className="app-header">
       <div className="header-content">
@@ -50,6 +52,14 @@ export function Header({ serviceStatus }: HeaderProps) {
         </nav>
 
         <div className="header-actions">
+          {user && (
+            <div className="header-user-controls">
+              <span className="header-user-name">{user.displayName}</span>
+              <button className="header-logout-button" type="button" onClick={logout}>
+                退出
+              </button>
+            </div>
+          )}
           <p className={`service-status is-${serviceStatus}`} role="status">
             <span className="service-status-dot" aria-hidden="true" />
             {serviceStatusText[serviceStatus]}

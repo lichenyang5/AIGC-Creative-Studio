@@ -2,6 +2,7 @@ import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { AppLayout } from '../AppLayout'
+import { AuthProvider } from '../../contexts/AuthContext'
 
 const jsonResponse = (body: unknown, status = 200): Response =>
   new Response(JSON.stringify(body), {
@@ -13,13 +14,13 @@ const jsonResponse = (body: unknown, status = 200): Response =>
 
 const renderAppLayout = (): void => {
   render(
-    <MemoryRouter initialEntries={['/create']}>
+    <AuthProvider><MemoryRouter initialEntries={['/create']}>
       <Routes>
         <Route element={<AppLayout />}>
           <Route path="/create" element={<main>创作页面</main>} />
         </Route>
       </Routes>
-    </MemoryRouter>,
+    </MemoryRouter></AuthProvider>,
   )
 }
 

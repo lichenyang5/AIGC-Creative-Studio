@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import App from '../../App'
 import { AppLayout } from '../../components/AppLayout'
+import { AuthProvider } from '../../contexts/AuthContext'
 
 interface TaskFailure {
   code?: string
@@ -87,13 +88,13 @@ const createFetchMock = (failure?: TaskFailure): ReturnType<typeof vi.fn<typeof 
 
 const renderCreatePage = (locationState?: unknown): void => {
   render(
-    <MemoryRouter initialEntries={[{ pathname: '/create', state: locationState }]}>
+    <AuthProvider><MemoryRouter initialEntries={[{ pathname: '/create', state: locationState }]}>
       <Routes>
         <Route element={<AppLayout />}>
           <Route path="/create" element={<App />} />
         </Route>
       </Routes>
-    </MemoryRouter>,
+    </MemoryRouter></AuthProvider>,
   )
 }
 

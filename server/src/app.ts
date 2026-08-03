@@ -1,5 +1,6 @@
 import cors from 'cors'
 import express from 'express'
+import { authRouter } from './routes/auth.js'
 import { generationsRouter } from './routes/generations.js'
 import { readStoredImage } from './storage/localImageStorage.js'
 
@@ -7,6 +8,7 @@ const app = express()
 
 app.use(cors())
 app.use(express.json())
+app.use('/api/auth', authRouter)
 
 app.get('/api/images/:filename', async (request, response) => {
   const image = await readStoredImage(request.params.filename)
