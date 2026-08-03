@@ -1,3 +1,4 @@
+/** JWT 创建与验证工具：密钥只从本机环境变量读取，避免在路由层重复处理安全配置。 */
 import jwt from 'jsonwebtoken'
 
 export interface AuthTokenPayload {

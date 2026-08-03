@@ -1,3 +1,4 @@
+/** 任务结果展示：统一呈现等待、处理中、失败和图片结果，并负责单张图片下载交互。 */
 import { useState } from 'react'
 import { createApiUrl, createAuthHeaders } from '../config/api'
 import {

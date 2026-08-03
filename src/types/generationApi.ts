@@ -1,3 +1,4 @@
+/** 前后端生成接口协议：页面只能依赖这些公开字段，内部 userId 不会返回浏览器。 */
 import type { AspectRatio } from './generation'
 
 export type GenerationStyle =

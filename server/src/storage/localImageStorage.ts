@@ -1,3 +1,4 @@
+/** 服务端图片文件存储：客户端路径不可直达 fs，所有文件名都先经过目录边界校验。 */
 import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises'
 import { basename, dirname, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'

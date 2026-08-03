@@ -1,3 +1,4 @@
+/** 本地临时图片上下文的类型与消费 Hook，Object URL 生命周期由 Provider 管理。 */
 import { createContext, useContext } from 'react'
 import type { LocalImportedImage } from '../types/localImage'
 

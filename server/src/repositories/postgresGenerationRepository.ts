@@ -1,3 +1,4 @@
+/** 生成任务 Repository：使用同一只读事务快照查询任务和图片，position 保证 imageIndex 稳定。 */
 import { randomUUID } from 'node:crypto'
 import { getDatabasePool } from '../database/database.js'
 import { getStoredImageFilename } from '../storage/localImageStorage.js'

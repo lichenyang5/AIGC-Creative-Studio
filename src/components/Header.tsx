@@ -1,3 +1,4 @@
+/** 顶部导航：显示当前路由、服务状态和用户会话入口。 */
 import { NavLink } from 'react-router-dom'
 import { useAuth } from '../contexts/authStore'
 import type { ServiceStatus } from '../types/health'

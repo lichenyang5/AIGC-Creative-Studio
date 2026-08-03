@@ -1,3 +1,4 @@
+/** 服务端生成任务卡片：展示图片和任务元数据，并封装下载、编辑、复用参数、删除操作。 */
 import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { createApiUrl, createAuthHeaders } from '../config/api'

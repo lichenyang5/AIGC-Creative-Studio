@@ -1,3 +1,4 @@
+/** 创作参数表单：只维护输入交互，提交与任务状态由 CreatePage 管理。 */
 import type { Dispatch, FormEvent, SetStateAction } from 'react'
 import {
   aspectRatios,

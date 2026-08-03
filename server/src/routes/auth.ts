@@ -1,3 +1,4 @@
+/** 认证路由：注册与登录只返回安全的用户展示信息，认证令牌通过 HttpOnly Cookie 交给浏览器。 */
 import { randomUUID } from 'node:crypto'
 import bcrypt from 'bcryptjs'
 import { Router, type Response } from 'express'

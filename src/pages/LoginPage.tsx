@@ -1,3 +1,4 @@
+/** 登录与注册入口：根据当前模式调用共享认证上下文，不直接处理令牌存储。 */
 import { useState, type FormEvent } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/authStore'

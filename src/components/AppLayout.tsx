@@ -1,3 +1,4 @@
+/** 公共页面壳：健康检查只在此处维护一次，所有受保护页面共享同一份服务状态。 */
 import { useEffect, useState } from 'react'
 import { Outlet } from 'react-router-dom'
 import { createApiUrl } from '../config/api'

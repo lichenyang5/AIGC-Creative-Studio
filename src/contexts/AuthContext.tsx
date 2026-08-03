@@ -1,3 +1,4 @@
+/** 认证会话 Provider：只保存当前用户展示信息，令牌由 HttpOnly Cookie 与会话存储协同处理。 */
 import { useCallback, useMemo, useState, type PropsWithChildren } from 'react'
 import { createApiUrl } from '../config/api'
 import { AuthContext, type AuthUser, type AuthContextValue } from './authStore'

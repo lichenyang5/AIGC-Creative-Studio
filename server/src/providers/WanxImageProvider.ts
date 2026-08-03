@@ -1,3 +1,4 @@
+/** DashScope Wanx Provider：封装参数映射、异步任务轮询与安全错误转换，不泄露 API Key 或鉴权头。 */
 import type { ImageGenerationProvider } from './ImageGenerationProvider.js'
 import {
   ProviderError,

@@ -1,3 +1,4 @@
+/** PostgreSQL 连接池与类型化查询入口；DATABASE_URL 缺失时快速失败。 */
 import { Pool, type QueryResultRow } from 'pg'
 
 let databasePool: Pool | null = null

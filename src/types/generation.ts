@@ -1,3 +1,4 @@
+/** 创作表单的 UI 领域类型，与后端 GenerationRequestPayload 分层维护。 */
 export const aspectRatios = ['1:1', '4:3', '3:4', '16:9'] as const
 export const imageCounts = [1, 2, 4] as const
 export const stylePresets = [

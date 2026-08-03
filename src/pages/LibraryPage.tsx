@@ -1,3 +1,4 @@
+/** 生成库页面：并列管理服务端 AI 任务、IndexedDB 导入素材和本地编辑作品。 */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ChangeEvent } from 'react'
 import { Link } from 'react-router-dom'

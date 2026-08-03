@@ -1,3 +1,4 @@
+/** 编辑器路由容器：加载 AI、本地素材或本地作品，并将 Canvas 静态帧交给对应存储路径。 */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import {

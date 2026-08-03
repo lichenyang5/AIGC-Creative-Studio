@@ -1,3 +1,4 @@
+/** 前端唯一的后端地址入口，避免路由页面把相对 URL 解析为 /create/api/...。 */
 const configuredApiBaseUrl = import.meta.env.VITE_API_BASE_URL?.trim()
 const apiBaseUrl = (configuredApiBaseUrl || 'http://localhost:3001').replace(/\/+$/, '')
 const authSessionKey = 'aigc-auth-session'

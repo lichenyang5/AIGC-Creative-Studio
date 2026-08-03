@@ -1,3 +1,4 @@
+/** IndexedDB 导入素材卡片：保留原始文件信息，提供编辑、下载和受确认保护的删除操作。 */
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { deleteImportedAsset } from '../services/localArtworkStorage'

@@ -1,3 +1,4 @@
+/** 图片生成 Provider 的平台无关输入、输出和安全错误模型。 */
 import type {
   AspectRatio,
   GenerationCount,

@@ -1,3 +1,4 @@
+/** Canvas 编辑核心：所有效果从原始像素或离屏画布重绘，保证预览、PNG 导出和保存结果一致。 */
 import {
   forwardRef,
   useCallback,

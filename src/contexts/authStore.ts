@@ -1,3 +1,4 @@
+/** 认证上下文的无副作用定义与消费 Hook，Provider 实现在 AuthContext.tsx。 */
 import { createContext, useContext } from 'react'
 
 export interface AuthUser { id: string; email: string; displayName: string }

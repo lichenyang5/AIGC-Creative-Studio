@@ -1,3 +1,4 @@
+/** 后端生成任务领域模型与 HTTP 响应协议；userId 只在服务端内部使用。 */
 export const aspectRatios = ['1:1', '4:3', '3:4', '16:9'] as const
 export const generationCounts = [1, 2, 4] as const
 export const generationStyles = [

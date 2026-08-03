@@ -1,3 +1,4 @@
+/** 生成任务 HTTP 路由：输入校验、当前用户授权和响应协议；SQL 与文件操作分别委托给下层模块。 */
 import { randomUUID } from 'node:crypto'
 import express, { Router } from 'express'
 import { requireAuth, type AuthenticatedRequest } from '../middleware/requireAuth.js'

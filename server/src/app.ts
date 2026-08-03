@@ -6,6 +6,7 @@ import { isStoredImageOwnedByUser } from './repositories/postgresGenerationRepos
 import { authRouter } from './routes/auth.js'
 import { generationsRouter } from './routes/generations.js'
 
+/** Express 应用装配点：图片访问在此执行认证与资源归属校验，避免静态目录被公开暴露。 */
 const app = express()
 
 app.use(cors({ origin: true, credentials: true }))

@@ -1,3 +1,4 @@
+/** 路由 state 的运行时校验：历史参数只存在于本次导航，不能假定外部 state 一定可信。 */
 import {
   aspectRatios,
   imageCounts,

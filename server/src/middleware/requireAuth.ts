@@ -1,3 +1,4 @@
+/** API 身份认证中间件：支持 Bearer Token 与 HttpOnly Cookie，并把已验证用户写入请求对象。 */
 import type { NextFunction, Request, Response } from 'express'
 import { verifyAuthToken, type AuthTokenPayload } from '../auth/token.js'
 

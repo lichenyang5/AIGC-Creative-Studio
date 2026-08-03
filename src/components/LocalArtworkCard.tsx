@@ -1,3 +1,4 @@
+/** IndexedDB 编辑作品卡片：运行时创建预览 URL，并在删除或卸载时释放资源。 */
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { deleteLocalArtwork } from '../services/localArtworkStorage'

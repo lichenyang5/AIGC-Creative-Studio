@@ -2,7 +2,7 @@ import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
-import App from '../../App'
+import CreatePage from '../CreatePage'
 import { AppLayout } from '../../components/AppLayout'
 import { AuthProvider } from '../../contexts/AuthContext'
 
@@ -91,7 +91,7 @@ const renderCreatePage = (locationState?: unknown): void => {
     <AuthProvider><MemoryRouter initialEntries={[{ pathname: '/create', state: locationState }]}>
       <Routes>
         <Route element={<AppLayout />}>
-          <Route path="/create" element={<App />} />
+          <Route path="/create" element={<CreatePage />} />
         </Route>
       </Routes>
     </MemoryRouter></AuthProvider>,

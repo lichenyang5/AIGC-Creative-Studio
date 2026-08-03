@@ -1,3 +1,4 @@
+/** IndexedDB 数据访问层：持久化 Blob 与元数据，不持久化 Object URL 或 Base64。 */
 import type { LocalArtwork } from '../types/localArtwork'
 import type { ImportedAsset } from '../types/importedAsset'
 

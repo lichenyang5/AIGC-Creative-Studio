@@ -1,3 +1,4 @@
+/** 临时本地图片会话：Object URL 只在当前浏览器会话中有效，Provider 负责集中释放它们。 */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { PropsWithChildren } from 'react'
 import type { LocalImportedImage } from '../types/localImage'
