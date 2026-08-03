@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { createApiUrl } from '../config/api'
+import { createApiUrl, createAuthHeaders } from '../config/api'
 import {
   type GenerationTask,
 } from '../types/generationApi'
@@ -52,6 +52,7 @@ export function ResultPreview({
     try {
       const response = await fetch(
         createApiUrl(`/api/generations/${taskId}/images/${imageIndex}/download`),
+        { headers: createAuthHeaders() },
       )
 
       if (!response.ok) {

@@ -2,7 +2,7 @@ import dotenv from 'dotenv'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { app } from './app.js'
-import { loadGenerationTasks } from './repositories/generationRepository.js'
+import { loadGenerationTasksFromPostgres } from './repositories/postgresGenerationRepository.js'
 import { restoreGenerationTasks } from './store/generationStore.js'
 
 const currentDirectory = dirname(fileURLToPath(import.meta.url))
@@ -14,7 +14,7 @@ dotenv.config({ path: resolve(currentDirectory, '../.env') })
 const port = Number(process.env.PORT) || 3001
 
 const startServer = async () => {
-  const tasks = await loadGenerationTasks()
+  const tasks = await loadGenerationTasksFromPostgres()
   restoreGenerationTasks(tasks)
 
   app.listen(port, () => {

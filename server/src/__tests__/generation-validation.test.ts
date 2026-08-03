@@ -1,14 +1,13 @@
-import { access, readFile } from 'node:fs/promises'
-import { dirname, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import request from 'supertest'
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 vi.hoisted(() => {
   process.env.ENABLE_REAL_GENERATION = 'false'
+  process.env.JWT_SECRET = 'generation-validation-test-secret-at-least-32-characters'
 })
 
 import { app } from '../app.js'
+import { createAuthToken } from '../auth/token.js'
 
 interface ValidationError {
   field: string
@@ -28,10 +27,6 @@ interface TestResponse {
   }
   body: unknown
 }
-
-const currentDirectory = dirname(fileURLToPath(import.meta.url))
-const generationsFilePath = resolve(currentDirectory, '../../data/generations.json')
-let originalGenerationsContents: string | null = null
 
 const assertValidationResponse = (
   response: TestResponse,
@@ -65,29 +60,13 @@ const expectErrorFields = (body: ValidationErrorResponse, fields: string[]) => {
 }
 
 describe('POST /api/generations validation', () => {
-  beforeAll(async () => {
-    try {
-      originalGenerationsContents = await readFile(generationsFilePath, 'utf8')
-    } catch {
-      originalGenerationsContents = null
-    }
-  })
-
-  afterAll(async () => {
-    if (originalGenerationsContents === null) {
-      await expect(access(generationsFilePath)).rejects.toMatchObject({
-        code: 'ENOENT',
-      })
-      return
-    }
-
-    await expect(readFile(generationsFilePath, 'utf8')).resolves.toBe(
-      originalGenerationsContents,
-    )
-  })
+  const authorization = `Bearer ${createAuthToken({
+    sub: '00000000-0000-4000-8000-000000000001',
+    email: 'validation@example.test',
+  })}`
 
   it('rejects an empty prompt', async () => {
-    const response = await request(app).post('/api/generations').send({
+    const response = await request(app).post('/api/generations').set('Authorization', authorization).send({
       prompt: '',
       aspectRatio: '1:1',
       count: 1,
@@ -98,7 +77,7 @@ describe('POST /api/generations validation', () => {
   })
 
   it('rejects a whitespace-only prompt', async () => {
-    const response = await request(app).post('/api/generations').send({
+    const response = await request(app).post('/api/generations').set('Authorization', authorization).send({
       prompt: '   ',
       aspectRatio: '1:1',
       count: 1,
@@ -109,7 +88,7 @@ describe('POST /api/generations validation', () => {
   })
 
   it('rejects an invalid aspect ratio', async () => {
-    const response = await request(app).post('/api/generations').send({
+    const response = await request(app).post('/api/generations').set('Authorization', authorization).send({
       prompt: '测试图片',
       aspectRatio: '2:1',
       count: 1,
@@ -120,7 +99,7 @@ describe('POST /api/generations validation', () => {
   })
 
   it('rejects an invalid count', async () => {
-    const response = await request(app).post('/api/generations').send({
+    const response = await request(app).post('/api/generations').set('Authorization', authorization).send({
       prompt: '测试图片',
       aspectRatio: '1:1',
       count: 3,
@@ -131,7 +110,7 @@ describe('POST /api/generations validation', () => {
   })
 
   it('rejects an invalid style', async () => {
-    const response = await request(app).post('/api/generations').send({
+    const response = await request(app).post('/api/generations').set('Authorization', authorization).send({
       prompt: '测试图片',
       aspectRatio: '1:1',
       count: 1,
@@ -142,7 +121,7 @@ describe('POST /api/generations validation', () => {
   })
 
   it('rejects a fractional seed', async () => {
-    const response = await request(app).post('/api/generations').send({
+    const response = await request(app).post('/api/generations').set('Authorization', authorization).send({
       prompt: '测试图片',
       aspectRatio: '1:1',
       count: 1,
@@ -154,7 +133,7 @@ describe('POST /api/generations validation', () => {
   })
 
   it('rejects a negative seed', async () => {
-    const response = await request(app).post('/api/generations').send({
+    const response = await request(app).post('/api/generations').set('Authorization', authorization).send({
       prompt: '测试图片',
       aspectRatio: '1:1',
       count: 1,
@@ -166,7 +145,7 @@ describe('POST /api/generations validation', () => {
   })
 
   it('returns every invalid field in a combined invalid request', async () => {
-    const response = await request(app).post('/api/generations').send({
+    const response = await request(app).post('/api/generations').set('Authorization', authorization).send({
       prompt: '',
       aspectRatio: '2:1',
       count: 3,

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { createApiUrl } from '../config/api'
+import { createApiUrl, createAuthHeaders } from '../config/api'
 import {
   type GeneratedImage,
   type GenerationStyle,
@@ -11,7 +11,7 @@ interface GenerationCardProps {
   task: GenerationTask
   image?: GeneratedImage
   imageIndex?: number
-  onDeleted: (taskId: string, imageIndex: number, taskDeleted: boolean) => void
+  onDeleted: (taskId: string, imageIndex: number | undefined, taskDeleted: boolean) => void
 }
 
 const styleText: Record<GenerationStyle, string> = {
@@ -58,11 +58,17 @@ export function GenerationCard({
   }, [isDeleteDialogOpen, isDeleting])
 
   const handleDelete = async () => {
-    if (isDeleting || imageIndex === undefined) return
+    if (isDeleting) return
     setIsDeleting(true)
     setDeleteError(null)
     try {
-      const response = await fetch(createApiUrl(`/api/generations/${task.taskId}/images/${imageIndex}`), { method: 'DELETE' })
+      const deletePath = imageIndex === undefined
+        ? `/api/generations/${task.taskId}`
+        : `/api/generations/${task.taskId}/images/${imageIndex}`
+      const response = await fetch(createApiUrl(deletePath), {
+        method: 'DELETE',
+        headers: createAuthHeaders(),
+      })
       const data = (await response.json()) as { success: boolean; message: string; data?: { taskDeleted: boolean } }
       if (!response.ok || !data.success || !data.data) throw new Error(data.message)
       onDeleted(task.taskId, imageIndex, data.data.taskDeleted)
@@ -87,6 +93,7 @@ export function GenerationCard({
         createApiUrl(
           `/api/generations/${task.taskId}/images/${imageIndex}/download`,
         ),
+        { headers: createAuthHeaders() },
       )
 
       if (!response.ok) {
@@ -153,6 +160,11 @@ export function GenerationCard({
           >
             复用参数
           </button>
+          {imageIndex === undefined && (
+            <button ref={triggerRef} type="button" className="delete-image-button" onClick={() => setIsDeleteDialogOpen(true)}>
+              删除任务
+            </button>
+          )}
           {image && imageIndex !== undefined && <>
             <Link className="image-action-button image-action-link" to={`/editor/${task.taskId}/${imageIndex}`}>编辑</Link>
             <button type="button" className="image-action-button" onClick={() => void handleDownload()} disabled={isDownloading}>{isDownloading ? '下载中...' : '下载'}</button>
@@ -167,7 +179,7 @@ export function GenerationCard({
           </p>
         )}
       </div>
-      {isDeleteDialogOpen && imageIndex !== undefined && (
+      {isDeleteDialogOpen && (
         <div className="delete-dialog-backdrop" onClick={() => !isDeleting && setIsDeleteDialogOpen(false)}>
           <section className="delete-dialog" role="dialog" aria-modal="true" aria-labelledby="delete-dialog-title" onClick={(event) => event.stopPropagation()}>
             <h3 id="delete-dialog-title">删除这张作品？</h3>

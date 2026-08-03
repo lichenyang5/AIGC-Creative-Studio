@@ -6,7 +6,7 @@ import {
   type ImageEditMode,
   type ColorRippleState,
 } from '../components/ImageCanvas'
-import { createApiUrl } from '../config/api'
+import { createApiUrl, createAuthHeaders } from '../config/api'
 import type {
   GenerationStyle,
   GenerationTask,
@@ -265,7 +265,9 @@ function EditorSession({ taskId, imageIndexParam, assetId }: EditorSessionProps)
       }
 
       try {
-        const response = await fetch(createApiUrl(`/api/generations/${taskId}`))
+        const response = await fetch(createApiUrl(`/api/generations/${taskId}`), {
+          headers: createAuthHeaders(),
+        })
         const data = (await response.json()) as
           | GenerationTaskQuerySuccessResponse
           | GenerationTaskQueryErrorResponse

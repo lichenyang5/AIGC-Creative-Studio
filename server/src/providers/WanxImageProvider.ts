@@ -13,8 +13,8 @@ const timeoutMs = 120_000
 
 const aspectRatioSizes: Record<GenerateImageInput['aspectRatio'], string> = {
   '1:1': '1024*1024',
-  '4:3': '1024*768',
-  '3:4': '768*1024',
+  '4:3': '1152*864',
+  '3:4': '864*1152',
   '16:9': '1280*720',
 }
 

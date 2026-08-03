@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom'
 import { GenerationCard } from '../components/GenerationCard'
 import { LocalImageCard } from '../components/LocalImageCard'
 import { LocalArtworkCard } from '../components/LocalArtworkCard'
-import { createApiUrl } from '../config/api'
+import { createApiUrl, createAuthHeaders } from '../config/api'
 import { getImportedAssets, getLocalArtworks, saveImportedAsset } from '../services/localArtworkStorage'
 import {
   type GenerationListErrorResponse,
@@ -80,6 +80,7 @@ export function LibraryPage() {
       try {
         const response = await fetch(
           createApiUrl('/api/generations?limit=20&offset=0'),
+          { headers: createAuthHeaders() },
         )
         const data = (await response.json()) as
           | GenerationListResponse
@@ -121,13 +122,14 @@ export function LibraryPage() {
 
   const handleImageDeleted = (
     taskId: string,
-    imageIndex: number,
+    imageIndex: number | undefined,
     taskDeleted: boolean,
   ) => {
     setTasks((currentTasks) =>
       currentTasks.flatMap((task) => {
         if (task.taskId !== taskId) return [task]
         if (taskDeleted) return []
+        if (imageIndex === undefined) return [task]
         return [{ ...task, result: { images: (task.result?.images ?? []).filter((_, index) => index !== imageIndex) } }]
       }),
     )

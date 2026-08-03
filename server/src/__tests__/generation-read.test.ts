@@ -1,15 +1,15 @@
 import { randomUUID } from 'node:crypto'
-import { access, readFile, readdir } from 'node:fs/promises'
-import { dirname, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { access, readdir } from 'node:fs/promises'
 import request from 'supertest'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
 vi.hoisted(() => {
   process.env.ENABLE_REAL_GENERATION = 'false'
+  process.env.JWT_SECRET = 'generation-read-test-secret-at-least-32-characters'
 })
 
 import { app } from '../app.js'
+import { createAuthToken } from '../auth/token.js'
 
 interface QueryError {
   field: string
@@ -28,11 +28,8 @@ interface TestResponse {
   body: unknown
 }
 
-const currentDirectory = dirname(fileURLToPath(import.meta.url))
-const generationsFilePath = resolve(currentDirectory, '../../data/generations.json')
-const imagesDirectory = resolve(currentDirectory, '../../storage/images')
+const imagesDirectory = new URL('../../storage/images', import.meta.url)
 const missingTaskId = randomUUID()
-let originalGenerations: Buffer | null = null
 let originalImageFilenames: string[] = []
 let imagesDirectoryExisted = false
 
@@ -52,12 +49,12 @@ const expectErrorFields = (body: QueryErrorResponse, fields: string[]) => {
 }
 
 describe('generation read endpoints', () => {
+  const authorization = `Bearer ${createAuthToken({
+    sub: '00000000-0000-4000-8000-000000000002',
+    email: 'reader@example.test',
+  })}`
+
   beforeAll(async () => {
-    try {
-      originalGenerations = await readFile(generationsFilePath)
-    } catch {
-      originalGenerations = null
-    }
     try {
       originalImageFilenames = (await readdir(imagesDirectory)).sort()
       imagesDirectoryExisted = true
@@ -68,11 +65,6 @@ describe('generation read endpoints', () => {
   })
 
   afterAll(async () => {
-    if (originalGenerations === null) {
-      await expect(access(generationsFilePath)).rejects.toMatchObject({ code: 'ENOENT' })
-    } else {
-      await expect(readFile(generationsFilePath)).resolves.toEqual(originalGenerations)
-    }
     if (imagesDirectoryExisted) {
       await expect(readdir(imagesDirectory)).resolves.toEqual(originalImageFilenames)
     } else {
@@ -88,19 +80,19 @@ describe('generation read endpoints', () => {
     ['offset=1.5', 'offset'],
     ['status=unknown', 'status'],
   ])('rejects invalid query parameter %s', async (query, field) => {
-    const response = await request(app).get(`/api/generations?${query}`)
+    const response = await request(app).get(`/api/generations?${query}`).set('Authorization', authorization)
     expectErrorFields(assertQueryError(response), [field])
   })
 
   it('returns every invalid field in a combined query', async () => {
     const response = await request(app).get(
       '/api/generations?status=unknown&limit=100&offset=-1',
-    )
+    ).set('Authorization', authorization)
     expectErrorFields(assertQueryError(response), ['status', 'limit', 'offset'])
   })
 
   it('returns the default history response without modifying data', async () => {
-    const response = await request(app).get('/api/generations')
+    const response = await request(app).get('/api/generations').set('Authorization', authorization)
     const body = response.body as {
       success: boolean
       data: { items: unknown[]; total: number; limit: number; offset: number; hasMore: boolean }
@@ -117,20 +109,18 @@ describe('generation read endpoints', () => {
   })
 
   it('returns 404 for a missing task and its image resources', async () => {
-    const taskResponse = await request(app).get(`/api/generations/${missingTaskId}`)
+    const taskResponse = await request(app).get(`/api/generations/${missingTaskId}`).set('Authorization', authorization)
     expect(taskResponse.status).toBe(404)
     expect((taskResponse.body as { success: boolean }).success).toBe(false)
     expect((taskResponse.body as { message: string }).message).toMatch(/not found/i)
 
     const downloadResponse = await request(app).get(
       `/api/generations/${missingTaskId}/images/0/download`,
-    )
+    ).set('Authorization', authorization)
     expect(downloadResponse.status).toBe(404)
     expect((downloadResponse.body as { success: boolean }).success).toBe(false)
 
-    const deleteResponse = await request(app).delete(
-      `/api/generations/${missingTaskId}/images/0`,
-    )
+    const deleteResponse = await request(app).delete(`/api/generations/${missingTaskId}/images/0`).set('Authorization', authorization)
     expect(deleteResponse.status).toBe(404)
     expect((deleteResponse.body as { success: boolean }).success).toBe(false)
   })

@@ -7,6 +7,14 @@ import { requireAuth, type AuthenticatedRequest } from '../middleware/requireAut
 
 const authRouter = Router()
 
+const authCookieOptions = {
+  httpOnly: true,
+  sameSite: 'lax' as const,
+  secure: process.env.NODE_ENV === 'production',
+  maxAge: 7 * 24 * 60 * 60 * 1000,
+  path: '/',
+}
+
 interface UserRow {
   id: string
   email: string
@@ -68,7 +76,10 @@ authRouter.post('/register', async (request, response) => {
       'INSERT INTO users (id, email, display_name, password_hash) VALUES ($1, $2, $3, $4)',
       [user.id, user.email, user.display_name, user.password_hash],
     )
-    response.status(201).json({ success: true, data: { user: toUserResponse(user), token } })
+    response
+      .cookie('aigc_access_token', token, authCookieOptions)
+      .status(201)
+      .json({ success: true, data: { user: toUserResponse(user), token } })
   } catch (cause: unknown) {
     if (isRecord(cause) && cause.code === '23505') {
       response.status(409).json({ success: false, message: 'Email is already registered' })
@@ -100,10 +111,17 @@ authRouter.post('/login', async (request, response) => {
       return
     }
     const token = createAuthToken({ sub: user.id, email: user.email })
-    response.status(200).json({ success: true, data: { user: toUserResponse(user), token } })
+    response
+      .cookie('aigc_access_token', token, authCookieOptions)
+      .status(200)
+      .json({ success: true, data: { user: toUserResponse(user), token } })
   } catch (cause: unknown) {
     sendAuthServiceError(response, cause, 'Unable to log in')
   }
+})
+
+authRouter.post('/logout', (_request, response) => {
+  response.clearCookie('aigc_access_token', { path: '/' }).status(204).end()
 })
 
 authRouter.get('/me', requireAuth, async (request: AuthenticatedRequest, response) => {

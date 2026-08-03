@@ -1,8 +1,12 @@
 import { randomUUID } from 'node:crypto'
 import express, { Router } from 'express'
+import { requireAuth, type AuthenticatedRequest } from '../middleware/requireAuth.js'
 import { WanxImageProvider } from '../providers/WanxImageProvider.js'
 import { ProviderError, type GenerateImageInput } from '../providers/types.js'
-import { saveGenerationTasks } from '../repositories/generationRepository.js'
+import {
+  deleteGenerationTaskFromPostgres,
+  saveGenerationTaskToPostgres,
+} from '../repositories/postgresGenerationRepository.js'
 import {
   getStoredImageFilename,
   deleteStoredImage,
@@ -43,13 +47,72 @@ import {
 
 const generationsRouter = Router()
 
+// Every task endpoint is scoped to the authenticated user. The health endpoint
+// and local image serving remain outside this router.
+generationsRouter.use(requireAuth)
+
 type GenerationTaskError = NonNullable<GenerationTask['error']>
 
-const persistGenerationTasks = async (): Promise<void> => {
+const taskPersistenceQueues = new Map<string, Promise<void>>()
+const taskMutationQueues = new Map<string, Promise<void>>()
+
+const mutateGenerationTask = async <Result>(
+  taskId: string,
+  mutation: () => Promise<Result>,
+): Promise<Result> => {
+  const previousMutation = taskMutationQueues.get(taskId) ?? Promise.resolve()
+  let releaseMutation: (() => void) | undefined
+  const currentMutation = new Promise<void>((resolve) => {
+    releaseMutation = resolve
+  })
+  const queuedMutation = previousMutation.then(() => currentMutation)
+  taskMutationQueues.set(taskId, queuedMutation)
+
+  await previousMutation
   try {
-    await saveGenerationTasks(getAllGenerationTasks())
+    return await mutation()
+  } finally {
+    releaseMutation?.()
+    if (taskMutationQueues.get(taskId) === queuedMutation) {
+      taskMutationQueues.delete(taskId)
+    }
+  }
+}
+
+const persistGenerationTask = async (taskId: string): Promise<boolean> => {
+  const previousPersistence = taskPersistenceQueues.get(taskId) ?? Promise.resolve()
+  const pendingPersistence = previousPersistence.then(async () => {
+    const task = getGenerationTask(taskId)
+    if (task) await saveGenerationTaskToPostgres(task)
+  })
+  taskPersistenceQueues.set(taskId, pendingPersistence.catch(() => undefined))
+
+  try {
+    await pendingPersistence
+    return true
   } catch {
-    console.error('Unable to persist generation task metadata')
+    console.error('Unable to persist generation task to PostgreSQL')
+    return false
+  }
+}
+
+const getOwnedGenerationTask = (
+  taskId: string,
+  userId: string,
+): GenerationTask | undefined => {
+  const task = getGenerationTask(taskId)
+  return task?.userId === userId ? task : undefined
+}
+
+const toGenerationTaskResponse = (task: GenerationTask): Omit<GenerationTask, 'userId'> => {
+  return {
+    taskId: task.taskId,
+    status: task.status,
+    request: task.request,
+    createdAt: task.createdAt,
+    ...(task.completedAt === undefined ? {} : { completedAt: task.completedAt }),
+    ...(task.result === undefined ? {} : { result: task.result }),
+    ...(task.error === undefined ? {} : { error: task.error }),
   }
 }
 
@@ -202,7 +265,7 @@ const getSafeProviderError = (cause: unknown): GenerationTaskError => {
   if (cause instanceof ProviderError) {
     return {
       code: cause.code,
-      message: 'Image generation provider failed',
+      message: cause.message.slice(0, 300) || 'Image generation provider failed',
       retryable: cause.retryable,
     }
   }
@@ -229,7 +292,7 @@ const runImageGeneration = async (
         retryable: false,
       },
     }))
-    await persistGenerationTasks()
+    await persistGenerationTask(taskId)
     return
   }
 
@@ -242,7 +305,7 @@ const runImageGeneration = async (
     return
   }
 
-  await persistGenerationTasks()
+  await persistGenerationTask(taskId)
 
   try {
     const provider = new WanxImageProvider()
@@ -261,7 +324,7 @@ const runImageGeneration = async (
         images,
       },
     }))
-    await persistGenerationTasks()
+    await persistGenerationTask(taskId)
   } catch (cause: unknown) {
     const error = getSafeProviderError(cause)
 
@@ -271,11 +334,17 @@ const runImageGeneration = async (
       completedAt: new Date().toISOString(),
       error,
     }))
-    await persistGenerationTasks()
+    await persistGenerationTask(taskId)
   }
 }
 
-generationsRouter.post('/', async (request, response) => {
+generationsRouter.post('/', async (request: AuthenticatedRequest, response) => {
+  const userId = request.authUser?.sub
+  if (!userId) {
+    response.status(401).json({ success: false, message: 'Authentication is required' })
+    return
+  }
+
   const body: unknown = request.body
   const errors = validateGenerationRequest(body)
 
@@ -313,17 +382,33 @@ generationsRouter.post('/', async (request, response) => {
 
   const generationTask: GenerationTask = {
     ...acceptedResponse.data,
+    userId,
     createdAt: new Date().toISOString(),
   }
 
   saveGenerationTask(generationTask)
-  await persistGenerationTasks()
+  const persisted = await persistGenerationTask(generationTask.taskId)
+
+  if (!persisted) {
+    deleteGenerationTask(generationTask.taskId)
+    response.status(503).json({
+      success: false,
+      message: 'Unable to create generation task',
+    })
+    return
+  }
 
   response.status(202).json(acceptedResponse)
   void runImageGeneration(generationTask.taskId, generationRequest)
 })
 
-generationsRouter.get('/', (request, response) => {
+generationsRouter.get('/', (request: AuthenticatedRequest, response) => {
+  const userId = request.authUser?.sub
+  if (!userId) {
+    response.status(401).json({ success: false, message: 'Authentication is required' })
+    return
+  }
+
   const { query, errors } = parseGenerationListQuery(request.query)
 
   if (!query) {
@@ -338,6 +423,7 @@ generationsRouter.get('/', (request, response) => {
   }
 
   const filteredTasks = getAllGenerationTasks()
+    .filter((task) => task.userId === userId)
     .filter((task) => query.status === undefined || task.status === query.status)
     .sort((firstTask, secondTask) =>
       secondTask.createdAt.localeCompare(firstTask.createdAt),
@@ -348,7 +434,7 @@ generationsRouter.get('/', (request, response) => {
   const listResponse: GenerationListResponse = {
     success: true,
     data: {
-      items,
+      items: items.map(toGenerationTaskResponse),
       total,
       limit: query.limit,
       offset: query.offset,
@@ -362,8 +448,14 @@ generationsRouter.get('/', (request, response) => {
 generationsRouter.post(
   '/:taskId/images/:imageIndex/edits',
   express.raw({ type: 'image/png', limit: '15mb' }),
-  async (request, response) => {
+  async (request: AuthenticatedRequest<{ taskId: string; imageIndex: string }>, response) => {
     const { taskId, imageIndex } = request.params
+    const userId = request.authUser?.sub
+
+    if (!userId) {
+      response.status(401).json({ success: false, message: 'Authentication is required' })
+      return
+    }
 
     if (!/^(0|[1-9]\d*)$/.test(imageIndex)) {
       response.status(400).json({
@@ -378,44 +470,6 @@ generationsRouter.post(
       response.status(400).json({
         success: false,
         message: 'Image index must be a non-negative integer',
-      })
-      return
-    }
-
-    const generationTask = getGenerationTask(taskId)
-    if (!generationTask) {
-      response.status(404).json({
-        success: false,
-        message: 'Generation task not found',
-      })
-      return
-    }
-
-    if (generationTask.status !== 'succeeded') {
-      response.status(409).json({
-        success: false,
-        message: 'Generation task has not succeeded',
-      })
-      return
-    }
-
-    const existingImages = generationTask.result?.images
-    if (!existingImages) {
-      response.status(409).json({
-        success: false,
-        message: 'Generation task has no images',
-      })
-      return
-    }
-
-    const sourceImage = existingImages[index]
-    const sourceFilename = sourceImage
-      ? getStoredImageFilename(sourceImage.url)
-      : null
-    if (!sourceImage || !sourceFilename || !(await readStoredImage(sourceFilename))) {
-      response.status(404).json({
-        success: false,
-        message: 'Generated image not found',
       })
       return
     }
@@ -443,104 +497,175 @@ generationsRouter.post(
       return
     }
 
-    const editId = randomUUID()
-    const savedImageIndex = existingImages.length
-    let filename: string | null = null
-
-    try {
-      filename = await saveEditedImage(taskId, editId, requestBody)
-      const createdAt = new Date().toISOString()
-      const editedImage: GenerationImage = {
-        url: `/api/images/${filename}`,
-        kind: 'edited',
-        createdAt,
-        sourceImageIndex: index,
+    await mutateGenerationTask(taskId, async () => {
+      const generationTask = getOwnedGenerationTask(taskId, userId)
+      if (!generationTask) {
+        response.status(404).json({ success: false, message: 'Generation task not found' })
+        return
       }
-      const updatedTask: GenerationTask = {
-        ...generationTask,
-        result: {
-          images: [...existingImages, editedImage],
-        },
-      }
-      const updatedTasks = getAllGenerationTasks().map((task) =>
-        task.taskId === taskId ? updatedTask : task,
-      )
-
-      await saveGenerationTasks(updatedTasks)
-      saveGenerationTask(updatedTask)
-
-      response.status(201).json({
-        success: true,
-        message: 'Edited image saved',
-        data: {
-          taskId,
-          imageIndex: savedImageIndex,
-          image: editedImage,
-        },
-      })
-    } catch {
-      if (filename) {
-        await deleteStoredImage(filename)
+      if (generationTask.status !== 'succeeded') {
+        response.status(409).json({ success: false, message: 'Generation task has not succeeded' })
+        return
       }
 
-      response.status(500).json({
-        success: false,
-        message: 'Unable to save edited image',
-      })
-    }
+      const existingImages = generationTask.result?.images
+      if (!existingImages) {
+        response.status(409).json({ success: false, message: 'Generation task has no images' })
+        return
+      }
+
+      const sourceImage = existingImages[index]
+      const sourceFilename = sourceImage ? getStoredImageFilename(sourceImage.url) : null
+      if (!sourceImage || !sourceFilename || !(await readStoredImage(sourceFilename))) {
+        response.status(404).json({ success: false, message: 'Generated image not found' })
+        return
+      }
+
+      const editId = randomUUID()
+      const savedImageIndex = existingImages.length
+      let filename: string | null = null
+      try {
+        filename = await saveEditedImage(taskId, editId, requestBody)
+        const createdAt = new Date().toISOString()
+        const editedImage: GenerationImage = {
+          url: `/api/images/${filename}`,
+          kind: 'edited',
+          createdAt,
+          sourceImageIndex: index,
+        }
+        saveGenerationTask({
+          ...generationTask,
+          result: { images: [...existingImages, editedImage] },
+        })
+        if (!(await persistGenerationTask(taskId))) {
+          throw new Error('Unable to persist edited image metadata')
+        }
+
+        response.status(201).json({
+          success: true,
+          message: 'Edited image saved',
+          data: { taskId, imageIndex: savedImageIndex, image: editedImage },
+        })
+      } catch {
+        if (filename) await deleteStoredImage(filename)
+        saveGenerationTask(generationTask)
+        await persistGenerationTask(taskId)
+        response.status(500).json({ success: false, message: 'Unable to save edited image' })
+      }
+    })
   },
 )
 
-generationsRouter.delete('/:taskId/images/:imageIndex', async (request, response) => {
+generationsRouter.delete('/:taskId/images/:imageIndex', async (request: AuthenticatedRequest<{ taskId: string; imageIndex: string }>, response) => {
   const { taskId, imageIndex } = request.params
+  const userId = request.authUser?.sub
+  if (!userId) {
+    response.status(401).json({ success: false, message: 'Authentication is required' })
+    return
+  }
   if (!/^(0|[1-9]\d*)$/.test(imageIndex)) {
     response.status(404).json({ success: false, message: 'Generated image not found' })
     return
   }
   const index = Number(imageIndex)
-  const task = getGenerationTask(taskId)
+  await mutateGenerationTask(taskId, async () => {
+    const task = getOwnedGenerationTask(taskId, userId)
+    if (!task) {
+      response.status(404).json({ success: false, message: 'Generation task not found' })
+      return
+    }
+    const image = task.result?.images[index]
+    if (!image) {
+      response.status(404).json({ success: false, message: 'Generated image not found' })
+      return
+    }
+    const filename = getStoredImageFilename(image.url)
+    if (!filename) {
+      response.status(404).json({ success: false, message: 'Generated image not found' })
+      return
+    }
+
+    const remainingImages = (task.result?.images ?? [])
+      .filter((_, currentIndex) => currentIndex !== index)
+      .map((currentImage) => {
+        const sourceImageIndex = currentImage.sourceImageIndex
+        if (sourceImageIndex === undefined || sourceImageIndex < index) return currentImage
+        if (sourceImageIndex === index) {
+          const imageWithoutDeletedSource = { ...currentImage }
+          delete imageWithoutDeletedSource.sourceImageIndex
+          return imageWithoutDeletedSource
+        }
+        return { ...currentImage, sourceImageIndex: sourceImageIndex - 1 }
+      })
+    const taskDeleted = remainingImages.length === 0
+    try {
+      if (taskDeleted) {
+        deleteGenerationTask(taskId)
+        await deleteGenerationTaskFromPostgres(taskId, userId)
+      } else {
+        saveGenerationTask({ ...task, result: { images: remainingImages } })
+        if (!(await persistGenerationTask(taskId))) {
+          throw new Error('Unable to persist generation task metadata')
+        }
+      }
+
+      await deleteStoredImage(filename)
+      response.status(200).json({
+        success: true,
+        message: 'Image deleted',
+        data: { taskId, deletedImageIndex: index, taskDeleted },
+      })
+    } catch {
+      saveGenerationTask(task)
+      await persistGenerationTask(taskId)
+      response.status(500).json({ success: false, message: 'Unable to delete image' })
+    }
+  })
+})
+
+generationsRouter.delete('/:taskId', async (request: AuthenticatedRequest<{ taskId: string }>, response) => {
+  const userId = request.authUser?.sub
+  if (!userId) {
+    response.status(401).json({ success: false, message: 'Authentication is required' })
+    return
+  }
+
+  const task = getOwnedGenerationTask(request.params.taskId, userId)
   if (!task) {
     response.status(404).json({ success: false, message: 'Generation task not found' })
     return
   }
-  const image = task.result?.images[index]
-  if (!image) {
-    response.status(404).json({ success: false, message: 'Generated image not found' })
-    return
-  }
-  const filename = getStoredImageFilename(image.url)
-  if (!filename) {
-    response.status(404).json({ success: false, message: 'Generated image not found' })
-    return
-  }
 
-  const remainingImages = task.result?.images.filter((_, currentIndex) => currentIndex !== index) ?? []
-  const taskDeleted = remainingImages.length === 0
-  const updatedTasks = getAllGenerationTasks().filter((currentTask) => currentTask.taskId !== taskId)
-  if (!taskDeleted) {
-    updatedTasks.push({ ...task, result: { images: remainingImages } })
+  if (task.status !== 'failed') {
+    response.status(409).json({
+      success: false,
+      message: 'Only failed generation tasks can be deleted without removing images',
+    })
+    return
   }
 
   try {
-    await saveGenerationTasks(updatedTasks)
-    await deleteStoredImage(filename)
-    if (taskDeleted) {
-      deleteGenerationTask(taskId)
-    } else {
-      saveGenerationTask({ ...task, result: { images: remainingImages } })
-    }
+    deleteGenerationTask(task.taskId)
+    await deleteGenerationTaskFromPostgres(task.taskId, userId)
     response.status(200).json({
       success: true,
-      message: 'Image deleted',
-      data: { taskId, deletedImageIndex: index, taskDeleted },
+      message: 'Generation task deleted',
+      data: { taskId: task.taskId, taskDeleted: true },
     })
   } catch {
-    response.status(500).json({ success: false, message: 'Unable to delete image' })
+    saveGenerationTask(task)
+    await persistGenerationTask(task.taskId)
+    response.status(500).json({ success: false, message: 'Unable to delete generation task' })
   }
 })
 
-generationsRouter.get('/:taskId/images/:imageIndex/download', async (request, response) => {
+generationsRouter.get('/:taskId/images/:imageIndex/download', async (request: AuthenticatedRequest<{ taskId: string; imageIndex: string }>, response) => {
   const { taskId, imageIndex } = request.params
+  const userId = request.authUser?.sub
+  if (!userId) {
+    response.status(401).json({ success: false, message: 'Authentication is required' })
+    return
+  }
 
   if (!/^(0|[1-9]\d*)$/.test(imageIndex)) {
     response.status(400).json({
@@ -559,7 +684,7 @@ generationsRouter.get('/:taskId/images/:imageIndex/download', async (request, re
     return
   }
 
-  const generationTask = getGenerationTask(taskId)
+  const generationTask = getOwnedGenerationTask(taskId, userId)
 
   if (!generationTask) {
     response.status(404).json({
@@ -616,8 +741,14 @@ generationsRouter.get('/:taskId/images/:imageIndex/download', async (request, re
     .send(imageBuffer)
 })
 
-generationsRouter.get('/:taskId', (request, response) => {
-  const generationTask = getGenerationTask(request.params.taskId)
+generationsRouter.get('/:taskId', (request: AuthenticatedRequest<{ taskId: string }>, response) => {
+  const userId = request.authUser?.sub
+  if (!userId) {
+    response.status(401).json({ success: false, message: 'Authentication is required' })
+    return
+  }
+
+  const generationTask = getOwnedGenerationTask(request.params.taskId, userId)
 
   if (!generationTask) {
     const notFoundResponse: GenerationTaskNotFoundResponse = {
@@ -631,7 +762,7 @@ generationsRouter.get('/:taskId', (request, response) => {
 
   const taskResponse: GenerationTaskResponse = {
     success: true,
-    data: generationTask,
+    data: toGenerationTaskResponse(generationTask),
   }
 
   response.status(200).json(taskResponse)

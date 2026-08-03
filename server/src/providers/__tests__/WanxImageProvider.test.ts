@@ -200,6 +200,38 @@ describe('WanxImageProvider', () => {
     await expect(resultPromise).resolves.toBeDefined()
   })
 
+  it.each([
+    ['4:3', '1152*864'],
+    ['3:4', '864*1152'],
+  ] as const)('uses a supported %s size', async (aspectRatio, size) => {
+    vi.useFakeTimers()
+    const fetchMock = createFetchMock()
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ output: { task_id: `external-task-${aspectRatio}` } }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          output: {
+            task_status: 'SUCCEEDED',
+            results: [{ url: 'https://example.test/generated/image.png' }],
+          },
+        }),
+      )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const resultPromise = new WanxImageProvider().generate({
+      ...defaultInput,
+      aspectRatio,
+    })
+    await vi.advanceTimersByTimeAsync(0)
+
+    const [, options] = fetchMock.mock.calls[0]
+    const body = JSON.parse(String(options?.body)) as { parameters: { size: string } }
+    expect(body.parameters.size).toBe(size)
+
+    await vi.advanceTimersByTimeAsync(pollingIntervalMs)
+    await expect(resultPromise).resolves.toBeDefined()
+  })
+
   it('maps a failed external task to a non-retryable provider error', async () => {
     vi.useFakeTimers()
     const fetchMock = createFetchMock()

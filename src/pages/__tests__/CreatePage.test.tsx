@@ -108,11 +108,32 @@ const submitAndRefreshForFailure = async (
 
 afterEach(() => {
   cleanup()
+  sessionStorage.clear()
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
 })
 
 describe('CreatePage generation failures', () => {
+  it('restores the active task after returning to the creation page', async () => {
+    sessionStorage.setItem('aigc-active-generation-session', JSON.stringify({
+      taskId,
+      formData: {
+        prompt: '测试生成失败',
+        negativePrompt: '',
+        aspectRatio: '1:1',
+        imageCount: 1,
+        seed: '',
+        stylePreset: '写实摄影',
+      },
+    }))
+    const fetchMock = createFetchMock()
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderCreatePage()
+
+    expect(await screen.findByText(taskId)).toBeInTheDocument()
+  })
+
   it('loads valid reused generation parameters without submitting a task', async () => {
     const fetchMock = createFetchMock()
     vi.stubGlobal('fetch', fetchMock)

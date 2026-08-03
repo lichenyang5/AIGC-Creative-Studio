@@ -1,8 +1,22 @@
 import type { NextFunction, Request, Response } from 'express'
 import { verifyAuthToken, type AuthTokenPayload } from '../auth/token.js'
 
-export interface AuthenticatedRequest extends Request {
+export interface AuthenticatedRequest<
+  Params extends Record<string, string> = Record<string, string>,
+> extends Request<Params> {
   authUser?: AuthTokenPayload
+}
+
+const getTokenFromCookie = (request: Request): string | null => {
+  const cookieHeader = request.header('cookie')
+  if (!cookieHeader) return null
+
+  const tokenPart = cookieHeader
+    .split(';')
+    .map((part) => part.trim())
+    .find((part) => part.startsWith('aigc_access_token='))
+
+  return tokenPart ? decodeURIComponent(tokenPart.slice('aigc_access_token='.length)) : null
 }
 
 export const requireAuth = (
@@ -13,7 +27,7 @@ export const requireAuth = (
   const authorization = request.header('authorization')
   const token = authorization?.startsWith('Bearer ')
     ? authorization.slice('Bearer '.length)
-    : null
+    : getTokenFromCookie(request)
   const authUser = token ? verifyAuthToken(token) : null
 
   if (!authUser) {

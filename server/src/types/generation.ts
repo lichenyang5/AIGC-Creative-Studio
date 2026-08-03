@@ -43,6 +43,8 @@ export interface GenerationImage {
 
 export interface GenerationTask {
   taskId: string
+  /** Internal owner identity. It is intentionally omitted from API responses. */
+  userId?: string
   status: GenerationStatus
   request: GenerationRequest
   createdAt: string

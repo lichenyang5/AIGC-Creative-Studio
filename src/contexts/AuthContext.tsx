@@ -11,6 +11,7 @@ interface AuthResponse {
 }
 
 const sessionKey = 'aigc-auth-session'
+const activeGenerationSessionKey = 'aigc-active-generation-session'
 
 const isAuthResponse = (value: unknown): value is AuthResponse => {
   if (
@@ -76,6 +77,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
+      credentials: 'include',
     })
     const data: unknown = await response.json().catch(() => null)
 
@@ -94,7 +96,12 @@ export function AuthProvider({ children }: PropsWithChildren) {
     login: (email, password) => authenticate('/api/auth/login', { email, password }),
     register: (email, displayName, password) => authenticate('/api/auth/register', { email, displayName, password }),
     logout: () => {
+      void fetch(createApiUrl('/api/auth/logout'), {
+        method: 'POST',
+        credentials: 'include',
+      })
       sessionStorage.removeItem(sessionKey)
+      sessionStorage.removeItem(activeGenerationSessionKey)
       setSession(null)
     },
   }), [authenticate, session])

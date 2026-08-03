@@ -3,7 +3,7 @@ import { useLocation } from 'react-router-dom'
 import './App.css'
 import { GenerationForm } from './components/GenerationForm'
 import { ResultPreview } from './components/ResultPreview'
-import { createApiUrl } from './config/api'
+import { createApiUrl, createAuthHeaders } from './config/api'
 import type {
   GenerationApiErrorResponse,
   GenerationApiSuccessResponse,
@@ -32,15 +32,92 @@ const styleMapping: Record<GenerationFormData['stylePreset'], GenerationStyle> =
   水彩插画: 'watercolor',
 }
 
+const activeGenerationSessionKey = 'aigc-active-generation-session'
+
+interface ActiveGenerationSession {
+  taskId: string
+  formData: GenerationFormData
+}
+
+const isGenerationFormData = (value: unknown): value is GenerationFormData => {
+  if (typeof value !== 'object' || value === null) return false
+
+  const candidate = value as Record<string, unknown>
+  return typeof candidate.prompt === 'string'
+    && typeof candidate.negativePrompt === 'string'
+    && (candidate.aspectRatio === '1:1' || candidate.aspectRatio === '4:3' || candidate.aspectRatio === '3:4' || candidate.aspectRatio === '16:9')
+    && (candidate.imageCount === 1 || candidate.imageCount === 2 || candidate.imageCount === 4)
+    && typeof candidate.seed === 'string'
+    && (candidate.stylePreset === '写实摄影' || candidate.stylePreset === '二次元' || candidate.stylePreset === '赛博朋克' || candidate.stylePreset === '水彩插画')
+}
+
+const readActiveGenerationSession = (): ActiveGenerationSession | null => {
+  try {
+    const value: unknown = JSON.parse(sessionStorage.getItem(activeGenerationSessionKey) ?? 'null')
+    if (
+      typeof value === 'object'
+      && value !== null
+      && 'taskId' in value
+      && typeof value.taskId === 'string'
+      && 'formData' in value
+      && isGenerationFormData(value.formData)
+    ) {
+      return { taskId: value.taskId, formData: value.formData }
+    }
+  } catch {
+    // Ignore malformed browser session data.
+  }
+
+  return null
+}
+
+const saveActiveGenerationSession = (session: ActiveGenerationSession): void => {
+  sessionStorage.setItem(activeGenerationSessionKey, JSON.stringify(session))
+}
+
+const clearActiveGenerationSession = (): void => {
+  sessionStorage.removeItem(activeGenerationSessionKey)
+}
+
+const toGenerationRequestPayload = (
+  formData: GenerationFormData,
+): GenerationRequestPayload => {
+  const seed = formData.seed.trim()
+
+  return {
+    prompt: formData.prompt,
+    negativePrompt: formData.negativePrompt,
+    aspectRatio: formData.aspectRatio,
+    count: formData.imageCount,
+    style: styleMapping[formData.stylePreset],
+    ...(seed === '' ? {} : { seed: Number(seed) }),
+  }
+}
+
 const isTerminalStatus = (status: GenerationTask['status']): boolean =>
   status === 'succeeded' || status === 'failed'
 
 function App() {
   const location = useLocation()
   const reusedFormData = getReusedGenerationFormData(location.state, initialFormData)
-  const [formData, setFormData] = useState(() => reusedFormData ?? initialFormData)
+  const activeGenerationSession = reusedFormData === null
+    ? readActiveGenerationSession()
+    : null
+  const initialPageFormData = reusedFormData ?? activeGenerationSession?.formData ?? initialFormData
+  const [formData, setFormData] = useState(
+    () => initialPageFormData,
+  )
   const [isGenerating, setIsGenerating] = useState(false)
-  const [generationTask, setGenerationTask] = useState<GenerationTask | null>(null)
+  const [generationTask, setGenerationTask] = useState<GenerationTask | null>(() =>
+    activeGenerationSession
+      ? {
+          taskId: activeGenerationSession.taskId,
+          status: 'pending',
+          request: toGenerationRequestPayload(activeGenerationSession.formData),
+          createdAt: '',
+        }
+      : null,
+  )
   const [generationError, setGenerationError] = useState<string | null>(null)
   const [isManualRefresh, setIsManualRefresh] = useState(false)
   const [refreshError, setRefreshError] = useState<string | null>(null)
@@ -67,6 +144,7 @@ function App() {
       try {
         const response = await fetch(
           createApiUrl(`/api/generations/${taskId}`),
+          { headers: createAuthHeaders() },
         )
         const data = (await response.json()) as
           | GenerationTaskQuerySuccessResponse
@@ -74,12 +152,17 @@ function App() {
 
         if (response.ok && data.success) {
           setGenerationTask((currentTask) =>
-            currentTask?.taskId === data.data.taskId ? data.data : currentTask,
+            currentTask === null || currentTask.taskId === data.data.taskId
+              ? data.data
+              : currentTask,
           )
           return data.data
         }
 
         stoppedPollingTaskIdRef.current = taskId
+        if (response.status === 404) {
+          clearActiveGenerationSession()
+        }
         setRefreshError('message' in data ? data.message : '查询任务状态失败')
         return null
       } catch {
@@ -157,22 +240,15 @@ function App() {
     setGenerationTask(null)
     setGenerationError(null)
     setRefreshError(null)
+    clearActiveGenerationSession()
     stoppedPollingTaskIdRef.current = null
 
-    const seed = formData.seed.trim()
-    const requestPayload: GenerationRequestPayload = {
-      prompt: formData.prompt,
-      negativePrompt: formData.negativePrompt,
-      aspectRatio: formData.aspectRatio,
-      count: formData.imageCount,
-      style: styleMapping[formData.stylePreset],
-      ...(seed === '' ? {} : { seed: Number(seed) }),
-    }
+    const requestPayload = toGenerationRequestPayload(formData)
 
     try {
       const response = await fetch(createApiUrl('/api/generations'), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: createAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify(requestPayload),
       })
       let data: GenerationApiSuccessResponse | GenerationApiErrorResponse
@@ -188,6 +264,7 @@ function App() {
 
       if (response.status === 202 && data.success) {
         setGenerationTask({ ...data.data, createdAt: '' })
+        saveActiveGenerationSession({ taskId: data.data.taskId, formData })
         return
       }
 
