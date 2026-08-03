@@ -51,6 +51,7 @@ type RippleMarkerStyle = CSSProperties & {
   '--ripple-y': string
 }
 
+/** 将交互百分比限制在画布允许范围，避免拖动或键盘操作越界。 */
 const clampPercentage = (value: number): number => Math.min(Math.max(value, 0), 100)
 
 interface RainDrop {
@@ -71,6 +72,10 @@ interface ColorRippleData {
   dropY: number
 }
 
+/**
+ * 基于任务/图片标识生成稳定伪随机数。相同 seed 和参数下雨滴布局不跳变，
+ * 同时不使用 Math.random() 干扰 React 重绘或参数调节的可预期性。
+ */
 const createSeededRandom = (seed: string): (() => number) => {
   let state = 2166136261
 
@@ -88,6 +93,10 @@ const createSeededRandom = (seed: string): (() => number) => {
   }
 }
 
+/**
+ * 初始化可复用的雨滴粒子池。length、speed、opacity、drift 是归一化扰动，
+ * 实际像素长度和速度在每帧依据原图尺寸与当前控件参数换算。
+ */
 const createRainDrops = (
   random: () => number,
   width: number,
@@ -180,6 +189,10 @@ export const ImageCanvas = forwardRef<ImageCanvasHandle, ImageCanvasProps>(
     colorRippleStateChangeRef.current = onColorRippleStateChange
   }, [onColorRippleStateChange])
 
+  /**
+   * 载入原图并建立两份离屏画布：彩色原图用于涟漪揭色，完整灰度图用于动画底图。
+   * 只在图片更换时执行昂贵的 getImageData/全图灰度计算，逐帧动画不重复读取像素。
+   */
   useEffect(() => {
     let isActive = true
     const image = new Image()
@@ -308,6 +321,7 @@ export const ImageCanvas = forwardRef<ImageCanvasHandle, ImageCanvasProps>(
     }
   }, [])
 
+  /** 取消雨滴 RAF，并重置时间基准，防止切换模式后留下并行动画。 */
   const cancelRainAnimation = useCallback((): void => {
     if (animationFrameRef.current !== null) {
       window.cancelAnimationFrame(animationFrameRef.current)
@@ -316,6 +330,7 @@ export const ImageCanvas = forwardRef<ImageCanvasHandle, ImageCanvasProps>(
     lastFrameTimeRef.current = null
   }, [])
 
+  /** 取消色彩涟漪 RAF；录制 WebM 和普通预览共用同一清理入口。 */
   const cancelColorRippleAnimation = useCallback((): void => {
     if (colorRippleFrameRef.current !== null) {
       window.cancelAnimationFrame(colorRippleFrameRef.current)
@@ -328,6 +343,10 @@ export const ImageCanvas = forwardRef<ImageCanvasHandle, ImageCanvasProps>(
     colorRippleStateChangeRef.current(state)
   }, [])
 
+  /**
+   * 绘制色彩涟漪的一帧：先画灰度离屏画布，再使用圆形 clip 绘制彩色原图。
+   * deltaTime 使用秒为单位并在调用点截断，避免浏览器回到前台后半径瞬间跳跃。
+   */
   const drawColorRippleFrame = useCallback((deltaTime: number): void => {
     const canvas = canvasRef.current
     const colorCanvas = colorCanvasRef.current
@@ -388,6 +407,10 @@ export const ImageCanvas = forwardRef<ImageCanvasHandle, ImageCanvasProps>(
     }
   }, [notifyColorRippleState])
 
+  /**
+   * 绘制雨滴的一帧。每帧先恢复原始 ImageData，因此雨滴不会叠加成残影；
+   * 粒子对象保存在 ref 中，只更新位置，不创建新的粒子数组。
+   */
   const drawRainFrame = useCallback((deltaTime: number): void => {
     const canvas = canvasRef.current
     const originalImageData = originalImageDataRef.current
@@ -455,6 +478,7 @@ export const ImageCanvas = forwardRef<ImageCanvasHandle, ImageCanvasProps>(
     context.restore()
   }, [])
 
+  /** 进入 rain 模式时用稳定 seed 初始化粒子池，离开时释放粒子引用与动画。 */
   useEffect(() => {
     if (mode !== 'rain') {
       cancelRainAnimation()
@@ -475,6 +499,7 @@ export const ImageCanvas = forwardRef<ImageCanvasHandle, ImageCanvasProps>(
     drawRainFrame(0)
   }, [cancelRainAnimation, drawRainFrame, imageVersion, mode, rainSeed])
 
+  /** 根据播放状态、页面可见性和模式控制唯一的雨滴 RAF 循环。 */
   useEffect(() => {
     if (
       mode !== 'rain' ||
@@ -513,12 +538,14 @@ export const ImageCanvas = forwardRef<ImageCanvasHandle, ImageCanvasProps>(
     drawRainFrame,
   ])
 
+  /** 参数变化仅重绘当前粒子，不重新随机化位置，保证调节时视觉连续。 */
   useEffect(() => {
     if (mode === 'rain' && originalImageDataRef.current) {
       drawRainFrame(0)
     }
   }, [drawRainFrame, mode, rainAmount, rainAngle, rainLength, rainOpacity, rainSpeed])
 
+  /** 切入涟漪模式时恢复全灰初始帧，并重置雨滴落点的动画状态。 */
   useEffect(() => {
     if (mode !== 'colorRipple') {
       cancelColorRippleAnimation()
@@ -533,6 +560,7 @@ export const ImageCanvas = forwardRef<ImageCanvasHandle, ImageCanvasProps>(
     notifyColorRippleState('ready')
   }, [cancelColorRippleAnimation, drawColorRippleFrame, imageVersion, mode, notifyColorRippleState])
 
+  /** playId 是一次性的播放触发器；每次递增都从顶部落雨和半径 0 重新开始。 */
   useEffect(() => {
     if (mode !== 'colorRipple' || colorRipplePlayId === 0) return
     const ripple = colorRippleRef.current
@@ -554,6 +582,7 @@ export const ImageCanvas = forwardRef<ImageCanvasHandle, ImageCanvasProps>(
     notifyColorRippleState('dropping')
   }, [cancelColorRippleAnimation, colorRipplePlayId, mode, notifyColorRippleState])
 
+  /** 仅在 dropping/rippling 阶段保持色彩涟漪 RAF，完成后立即停止调度。 */
   useEffect(() => {
     if (mode !== 'colorRipple' || !isDocumentVisible) {
       cancelColorRippleAnimation()
@@ -591,6 +620,10 @@ export const ImageCanvas = forwardRef<ImageCanvasHandle, ImageCanvasProps>(
     notifyColorRippleState,
   ])
 
+  /**
+   * 原图、黑白和灰度渐变的像素处理入口。始终从 originalImageData 读取，
+   * 不基于上一帧结果继续计算，避免多次拖动滑块出现累计失真。
+   */
   useEffect(() => {
     const canvas = canvasRef.current
     const originalImageData = originalImageDataRef.current
@@ -687,6 +720,10 @@ export const ImageCanvas = forwardRef<ImageCanvasHandle, ImageCanvasProps>(
     drawColorRippleFrame,
   ])
 
+  /**
+   * 使用 canvas.captureStream + MediaRecorder 录制同一套涟漪动画。
+   * 录制过程会清理 RAF、MediaStream tracks、超时定时器和临时数据，导出内容不含 DOM 标记。
+   */
   const exportColorRippleVideo = useCallback((): Promise<Blob> =>
     new Promise<Blob>((resolve, reject) => {
       const canvas = canvasRef.current
@@ -796,6 +833,7 @@ export const ImageCanvas = forwardRef<ImageCanvasHandle, ImageCanvasProps>(
       notifyColorRippleState,
     ])
 
+  /** 导出当前 Canvas 像素为 PNG；雨滴和涟漪动画会自然捕获调用时的当前帧。 */
   const exportImage = useCallback(
     (): Promise<Blob> =>
       new Promise<Blob>((resolve, reject) => {
@@ -827,6 +865,10 @@ export const ImageCanvas = forwardRef<ImageCanvasHandle, ImageCanvasProps>(
     [exportColorRippleVideo, exportImage],
   )
 
+  /**
+   * 使用显示尺寸 getBoundingClientRect 把指针坐标换算为 0~100%，
+   * 不依赖 offsetX，因此 CSS 缩放和响应式尺寸下仍能准确同步分界线。
+   */
   const updateGradientPositionFromPointer = (clientX: number): void => {
     const canvas = canvasRef.current
 
@@ -843,6 +885,7 @@ export const ImageCanvas = forwardRef<ImageCanvasHandle, ImageCanvasProps>(
     onGradientPositionChange(Math.round(clampPercentage(position)))
   }
 
+  /** 同时处理涟漪落点选择与灰度渐变拖动起点；两种模式互斥，避免效果叠加。 */
   const handlePointerDown = (event: PointerEvent<HTMLElement>): void => {
     if (mode === 'colorRipple') {
       const canvas = canvasRef.current

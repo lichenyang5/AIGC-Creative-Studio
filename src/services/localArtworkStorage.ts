@@ -10,6 +10,9 @@ const IMPORTED_ASSET_STORE_NAME = 'imported-assets'
 const getErrorMessage = (error: unknown, fallback: string): string =>
   error instanceof Error && error.message ? error.message : fallback
 
+/**
+ * 打开并升级 IndexedDB。升级只增加对象仓库，保留已有编辑作品，避免使用 deleteDatabase 重建。
+ */
 const openDatabase = (): Promise<IDBDatabase> =>
   new Promise((resolve, reject) => {
     if (typeof indexedDB === 'undefined') {
@@ -43,6 +46,9 @@ const openDatabase = (): Promise<IDBDatabase> =>
     request.onsuccess = () => resolve(request.result)
   })
 
+/**
+ * 将 IndexedDB 事务封装为 Promise，统一处理 abort/error 和只读/读写事务生命周期。
+ */
 const withStore = <Result>(
   storeName: string,
   mode: IDBTransactionMode,
@@ -81,9 +87,11 @@ const withStore = <Result>(
       .catch(reject)
   })
 
+/** 保存 Canvas 导出的编辑作品 Blob；调用方负责在保存前完成导出。 */
 export const saveLocalArtwork = (artwork: LocalArtwork): Promise<void> =>
   withStore(ARTWORK_STORE_NAME, 'readwrite', (store) => store.put(artwork), '本地作品保存失败').then(() => undefined)
 
+/** 读取本地编辑作品，并按保存时间倒序返回给生成库。 */
 export const getLocalArtworks = async (): Promise<LocalArtwork[]> => {
   const artworks = await withStore<LocalArtwork[]>(
     ARTWORK_STORE_NAME,
@@ -109,9 +117,11 @@ export const getLocalArtwork = (id: string): Promise<LocalArtwork | undefined> =
 export const deleteLocalArtwork = (id: string): Promise<void> =>
   withStore(ARTWORK_STORE_NAME, 'readwrite', (store) => store.delete(id), '本地作品删除失败').then(() => undefined)
 
+/** 导入后立即保存原始 File/Blob，刷新页面后可根据稳定素材 ID 重新加载编辑器。 */
 export const saveImportedAsset = (asset: ImportedAsset): Promise<void> =>
   withStore(IMPORTED_ASSET_STORE_NAME, 'readwrite', (store) => store.put(asset), '导入图片保存失败').then(() => undefined)
 
+/** 读取持久化导入素材；Object URL 由展示组件在运行时重新创建并释放。 */
 export const getImportedAssets = async (): Promise<ImportedAsset[]> => {
   const assets = await withStore<ImportedAsset[]>(
     IMPORTED_ASSET_STORE_NAME,

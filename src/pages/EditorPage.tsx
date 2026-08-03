@@ -40,6 +40,7 @@ const localArtworkTaskIdPrefix = 'local-artwork-'
 const isLocalArtworkTaskId = (taskId: string | undefined): boolean =>
   taskId?.startsWith(localArtworkTaskIdPrefix) ?? false
 
+/** 将 IndexedDB 导入素材适配为编辑器统一消费的 GenerationTask 视图，不把 Blob URL 放入路由。 */
 const createImportedAssetTask = (asset: ImportedAsset, url: string): GenerationTask => ({
   taskId: asset.id,
   status: 'succeeded',
@@ -88,6 +89,7 @@ interface EditorSessionProps {
   assetId: string | undefined
 }
 
+/** 路由层通过 key 强制编辑会话在图片变化时重挂载，从而恢复所有滤镜默认值。 */
 export function EditorPage() {
   const { taskId, imageIndex: imageIndexParam, assetId } = useParams()
 
@@ -153,6 +155,7 @@ function EditorSession({ taskId, imageIndexParam, assetId }: EditorSessionProps)
     ? createLocalArtworkTask(localArtwork, localArtworkUrl)
     : null
 
+  /** 新图片完成 Canvas 加载后重置所有效果参数，避免上一张图的状态泄漏到当前图片。 */
   const handleImageLoad = useCallback(() => {
     setEditMode('original')
     setBlackWhiteIntensity(0)
@@ -191,6 +194,10 @@ function EditorSession({ taskId, imageIndexParam, assetId }: EditorSessionProps)
     setColorRippleState(state)
   }, [])
 
+  /**
+   * 按路由来源加载图片：AI 作品走后端授权接口，本地素材/作品走 IndexedDB。
+   * 本地 Blob 的 Object URL 只在当前会话使用；异步完成时页面已卸载则立即释放。
+   */
   useEffect(() => {
     let isActive = true
 
@@ -304,10 +311,12 @@ function EditorSession({ taskId, imageIndexParam, assetId }: EditorSessionProps)
     }
   }, [assetId, imageIndex, isImportedAsset, isLocalArtwork, localArtworkId, taskId])
 
+  /** 本地编辑作品换图或卸载时释放预览 URL，避免浏览器长期持有 Blob。 */
   useEffect(() => () => {
     if (localArtworkUrl) URL.revokeObjectURL(localArtworkUrl)
   }, [localArtworkUrl])
 
+  /** 导入素材预览 URL 与编辑作品 URL 分开管理，避免删除素材时误释放其他作品。 */
   useEffect(() => () => {
     if (importedAssetUrl) URL.revokeObjectURL(importedAssetUrl)
   }, [importedAssetUrl])
