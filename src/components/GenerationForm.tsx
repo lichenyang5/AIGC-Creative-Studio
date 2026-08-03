@@ -11,6 +11,7 @@ interface GenerationFormProps {
   onChange: Dispatch<SetStateAction<GenerationFormData>>
   onSubmit: () => Promise<void>
   isGenerating: boolean
+  reusedParametersLoaded: boolean
 }
 
 export function GenerationForm({
@@ -18,6 +19,7 @@ export function GenerationForm({
   onChange,
   onSubmit,
   isGenerating,
+  reusedParametersLoaded,
 }: GenerationFormProps) {
   const updateField = <Key extends keyof GenerationFormData>(
     key: Key,
@@ -37,6 +39,11 @@ export function GenerationForm({
         <h2 id="parameters-title">创作参数</h2>
         <p>描述你的想法，调整生成偏好</p>
       </div>
+      {reusedParametersLoaded && (
+        <p className="reused-parameters-notice" role="status">
+          已载入历史生成参数，可调整后重新生成
+        </p>
+      )}
 
       <form className="generation-form" onSubmit={handleSubmit}>
         <div className="field-group">

@@ -20,6 +20,7 @@ createRoot(document.getElementById('root')!).render(
         <Route element={<AppLayout />}>
           <Route path="/create" element={<App />} />
           <Route path="/library" element={<LibraryPage />} />
+          <Route path="/editor/imported/:assetId" element={<EditorPage />} />
           <Route path="/editor/:taskId/:imageIndex" element={<EditorPage />} />
         </Route>
         <Route path="*" element={<Navigate to="/create" replace />} />

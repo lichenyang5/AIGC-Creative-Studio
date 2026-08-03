@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { createApiUrl } from '../config/api'
 import {
   type GeneratedImage,
@@ -9,8 +9,8 @@ import {
 
 interface GenerationCardProps {
   task: GenerationTask
-  image: GeneratedImage
-  imageIndex: number
+  image?: GeneratedImage
+  imageIndex?: number
   onDeleted: (taskId: string, imageIndex: number, taskDeleted: boolean) => void
 }
 
@@ -30,6 +30,7 @@ export function GenerationCard({
   imageIndex,
   onDeleted,
 }: GenerationCardProps) {
+  const navigate = useNavigate()
   const [isDownloading, setIsDownloading] = useState(false)
   const [downloadError, setDownloadError] = useState<string | null>(null)
   const [hasImageError, setHasImageError] = useState(false)
@@ -57,7 +58,7 @@ export function GenerationCard({
   }, [isDeleteDialogOpen, isDeleting])
 
   const handleDelete = async () => {
-    if (isDeleting) return
+    if (isDeleting || imageIndex === undefined) return
     setIsDeleting(true)
     setDeleteError(null)
     try {
@@ -74,7 +75,7 @@ export function GenerationCard({
   }
 
   const handleDownload = async () => {
-    if (isDownloading) {
+    if (isDownloading || imageIndex === undefined) {
       return
     }
 
@@ -112,16 +113,16 @@ export function GenerationCard({
     <article className="library-card">
       <div className="library-image-wrap">
         <span className="image-kind-label">
-          {image.kind === 'edited' ? '编辑作品' : 'AI 生成'}
+          {image?.kind === 'edited' ? '编辑作品' : 'AI 生成'}
         </span>
-        {hasImageError ? (
+        {!image || hasImageError ? (
           <div className="library-image-placeholder" role="img" aria-label="图片加载失败">
-            图片加载失败
+            {image ? '图片加载失败' : '当前任务尚未产生图片'}
           </div>
         ) : (
           <img
             src={image.url.startsWith('/') ? createApiUrl(image.url) : image.url}
-            alt={`生成任务 ${task.taskId} 的第 ${imageIndex + 1} 张图片`}
+            alt={`生成任务 ${task.taskId} 的第 ${(imageIndex ?? 0) + 1} 张图片`}
             onError={() => setHasImageError(true)}
           />
         )}
@@ -145,34 +146,19 @@ export function GenerationCard({
         </dl>
 
         <div className="library-card-actions">
-          <Link
-            className="image-action-button image-action-link"
-            to={`/editor/${task.taskId}/${imageIndex}`}
-          >
-            编辑
-          </Link>
           <button
             type="button"
             className="image-action-button"
-            onClick={() => void handleDownload()}
-            disabled={isDownloading}
+            onClick={() => navigate('/create', { state: { reusedGenerationRequest: task.request } })}
           >
-            {isDownloading ? '下载中...' : '下载'}
+            复用参数
           </button>
-          <button ref={triggerRef} type="button" className="delete-image-button" onClick={() => setIsDeleteDialogOpen(true)}>删除</button>
-          <button
-            type="button"
-            className="image-action-button"
-            onClick={() =>
-              window.open(
-                image.url.startsWith('/') ? createApiUrl(image.url) : image.url,
-                '_blank',
-                'noopener,noreferrer',
-              )
-            }
-          >
-            新窗口查看
-          </button>
+          {image && imageIndex !== undefined && <>
+            <Link className="image-action-button image-action-link" to={`/editor/${task.taskId}/${imageIndex}`}>编辑</Link>
+            <button type="button" className="image-action-button" onClick={() => void handleDownload()} disabled={isDownloading}>{isDownloading ? '下载中...' : '下载'}</button>
+            <button ref={triggerRef} type="button" className="delete-image-button" onClick={() => setIsDeleteDialogOpen(true)}>删除</button>
+            <button type="button" className="image-action-button" onClick={() => window.open(image.url.startsWith('/') ? createApiUrl(image.url) : image.url, '_blank', 'noopener,noreferrer')}>新窗口查看</button>
+          </>}
         </div>
 
         {downloadError && (
@@ -181,7 +167,7 @@ export function GenerationCard({
           </p>
         )}
       </div>
-      {isDeleteDialogOpen && (
+      {isDeleteDialogOpen && imageIndex !== undefined && (
         <div className="delete-dialog-backdrop" onClick={() => !isDeleting && setIsDeleteDialogOpen(false)}>
           <section className="delete-dialog" role="dialog" aria-modal="true" aria-labelledby="delete-dialog-title" onClick={(event) => event.stopPropagation()}>
             <h3 id="delete-dialog-title">删除这张作品？</h3>

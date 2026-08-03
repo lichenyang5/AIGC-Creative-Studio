@@ -9,12 +9,13 @@ import {
 import { createApiUrl } from '../config/api'
 import type {
   GenerationStyle,
-  GenerationEditSaveErrorResponse,
-  GenerationEditSaveSuccessResponse,
   GenerationTask,
   GenerationTaskQueryErrorResponse,
   GenerationTaskQuerySuccessResponse,
 } from '../types/generationApi'
+import type { LocalArtwork } from '../types/localArtwork'
+import type { ImportedAsset } from '../types/importedAsset'
+import { getImportedAsset, getLocalArtwork, saveLocalArtwork } from '../services/localArtworkStorage'
 
 const styleText: Record<GenerationStyle, string> = {
   realistic: '写实摄影',
@@ -33,24 +34,73 @@ const shouldPlayRainByDefault = (): boolean =>
   typeof window === 'undefined' ||
   !window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
+const localArtworkTaskIdPrefix = 'local-artwork-'
+
+const isLocalArtworkTaskId = (taskId: string | undefined): boolean =>
+  taskId?.startsWith(localArtworkTaskIdPrefix) ?? false
+
+const createImportedAssetTask = (asset: ImportedAsset, url: string): GenerationTask => ({
+  taskId: asset.id,
+  status: 'succeeded',
+  request: {
+    prompt: `本地导入图片：${asset.originalFileName}`,
+    negativePrompt: '',
+    aspectRatio: '1:1',
+    count: 1,
+    style: 'realistic',
+  },
+  createdAt: asset.createdAt,
+  result: {
+    images: [{ url }],
+  },
+})
+
+type LocalArtworkSaveStatus = 'idle' | 'saving' | 'succeeded' | 'failed'
+
+const createArtworkName = (createdAt: Date): string => {
+  const formatted = createdAt
+    .toLocaleString('zh-CN', { hour12: false })
+    .replace(/\//g, '-')
+    .replace(/:/g, '-')
+    .replace(/\s+/g, ' ')
+
+  return `编辑作品 ${formatted}`
+}
+
+const createLocalArtworkTask = (artwork: LocalArtwork, url: string): GenerationTask => ({
+  taskId: `${localArtworkTaskIdPrefix}${artwork.id}`,
+  status: 'succeeded',
+  request: {
+    prompt: artwork.name,
+    negativePrompt: '',
+    aspectRatio: '1:1',
+    count: 1,
+    style: 'realistic',
+  },
+  createdAt: artwork.createdAt,
+  result: { images: [{ url }] },
+})
+
 interface EditorSessionProps {
   taskId: string | undefined
   imageIndexParam: string | undefined
+  assetId: string | undefined
 }
 
 export function EditorPage() {
-  const { taskId, imageIndex: imageIndexParam } = useParams()
+  const { taskId, imageIndex: imageIndexParam, assetId } = useParams()
 
   return (
     <EditorSession
-      key={`${taskId ?? ''}:${imageIndexParam ?? ''}`}
+      key={`${taskId ?? assetId ?? ''}:${imageIndexParam ?? ''}`}
       taskId={taskId}
       imageIndexParam={imageIndexParam}
+      assetId={assetId}
     />
   )
 }
 
-function EditorSession({ taskId, imageIndexParam }: EditorSessionProps) {
+function EditorSession({ taskId, imageIndexParam, assetId }: EditorSessionProps) {
   const [task, setTask] = useState<GenerationTask | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -78,12 +128,29 @@ function EditorSession({ taskId, imageIndexParam }: EditorSessionProps) {
   const [isCanvasReady, setIsCanvasReady] = useState(false)
   const [isExporting, setIsExporting] = useState(false)
   const [exportMessage, setExportMessage] = useState<string | null>(null)
-  const [isSaving, setIsSaving] = useState(false)
+  const [localArtworkSaveStatus, setLocalArtworkSaveStatus] = useState<LocalArtworkSaveStatus>('idle')
   const [saveMessage, setSaveMessage] = useState<string | null>(null)
-  const [isSaveError, setIsSaveError] = useState(false)
-  const [hasSavedEdit, setHasSavedEdit] = useState(false)
+  const [localArtwork, setLocalArtwork] = useState<LocalArtwork | null>(null)
+  const [localArtworkUrl, setLocalArtworkUrl] = useState<string | null>(null)
+  const [importedAsset, setImportedAsset] = useState<ImportedAsset | null>(null)
+  const [importedAssetUrl, setImportedAssetUrl] = useState<string | null>(null)
   const imageCanvasRef = useRef<ImageCanvasHandle>(null)
-  const imageIndex = isValidImageIndex(imageIndexParam) ? Number(imageIndexParam) : null
+  const isImportedAsset = assetId !== undefined
+  const imageIndex = isImportedAsset
+    ? 0
+    : isValidImageIndex(imageIndexParam)
+      ? Number(imageIndexParam)
+      : null
+  const isLocalArtwork = isLocalArtworkTaskId(taskId)
+  const importedAssetTask = importedAsset && importedAssetUrl
+    ? createImportedAssetTask(importedAsset, importedAssetUrl)
+    : null
+  const localArtworkId = isLocalArtwork && taskId
+    ? taskId.slice(localArtworkTaskIdPrefix.length)
+    : null
+  const localArtworkTask = localArtwork && localArtworkUrl
+    ? createLocalArtworkTask(localArtwork, localArtworkUrl)
+    : null
 
   const handleImageLoad = useCallback(() => {
     setEditMode('original')
@@ -103,8 +170,7 @@ function EditorSession({ taskId, imageIndexParam }: EditorSessionProps) {
     setIsColorRipplePaused(false)
     setHasColorRipplePoint(false)
     setSaveMessage(null)
-    setIsSaveError(false)
-    setHasSavedEdit(false)
+    setLocalArtworkSaveStatus('idle')
   }, [])
 
   const handleCanvasLoadStateChange = useCallback((isReady: boolean) => {
@@ -128,6 +194,68 @@ function EditorSession({ taskId, imageIndexParam }: EditorSessionProps) {
     let isActive = true
 
     const loadTask = async () => {
+      if (isImportedAsset) {
+        if (!assetId) {
+          if (isActive) {
+            setError('未找到该导入图片，可能已被删除')
+            setIsLoading(false)
+          }
+          return
+        }
+
+        try {
+          const asset = await getImportedAsset(assetId)
+          if (!asset) {
+            throw new Error('未找到该导入图片，可能已被删除')
+          }
+          const objectUrl = URL.createObjectURL(asset.blob)
+          if (isActive) {
+            setImportedAsset(asset)
+            setImportedAssetUrl(objectUrl)
+          } else {
+            URL.revokeObjectURL(objectUrl)
+          }
+        } catch (cause: unknown) {
+          if (isActive) {
+            setError(cause instanceof Error ? cause.message : '导入图片加载失败，请稍后重试')
+          }
+        } finally {
+          if (isActive) setIsLoading(false)
+        }
+        return
+      }
+
+      if (isLocalArtwork) {
+        if (!localArtworkId) {
+          if (isActive) {
+            setError('找不到需要编辑的本地作品')
+            setIsLoading(false)
+          }
+          return
+        }
+
+        try {
+          const artwork = await getLocalArtwork(localArtworkId)
+          if (!artwork) {
+            throw new Error('找不到需要编辑的本地作品')
+          }
+          const objectUrl = URL.createObjectURL(artwork.blob)
+          if (isActive) {
+            setLocalArtwork(artwork)
+            setLocalArtworkUrl(objectUrl)
+          } else {
+            URL.revokeObjectURL(objectUrl)
+          }
+        } catch (cause: unknown) {
+          if (isActive) {
+            setError(cause instanceof Error ? cause.message : '本地作品加载失败，请稍后重试')
+          }
+        } finally {
+          if (isActive) setIsLoading(false)
+        }
+        return
+      }
+
       if (!taskId || imageIndex === null) {
         if (isActive) {
           setError('找不到需要编辑的图片')
@@ -171,7 +299,15 @@ function EditorSession({ taskId, imageIndexParam }: EditorSessionProps) {
     return () => {
       isActive = false
     }
-  }, [imageIndex, taskId])
+  }, [assetId, imageIndex, isImportedAsset, isLocalArtwork, localArtworkId, taskId])
+
+  useEffect(() => () => {
+    if (localArtworkUrl) URL.revokeObjectURL(localArtworkUrl)
+  }, [localArtworkUrl])
+
+  useEffect(() => () => {
+    if (importedAssetUrl) URL.revokeObjectURL(importedAssetUrl)
+  }, [importedAssetUrl])
 
   if (isLoading) {
     return (
@@ -181,7 +317,9 @@ function EditorSession({ taskId, imageIndexParam }: EditorSessionProps) {
     )
   }
 
-  if (error || !task || imageIndex === null) {
+  const activeTask = importedAssetTask ?? localArtworkTask ?? task
+
+  if (error || !activeTask || imageIndex === null) {
     return (
       <main className="editor-page">
         <div className="editor-state editor-error" role="alert">
@@ -192,7 +330,7 @@ function EditorSession({ taskId, imageIndexParam }: EditorSessionProps) {
     )
   }
 
-  const image = task.result?.images[imageIndex]
+  const image = activeTask.result?.images[imageIndex]
   if (!image) {
     return (
       <main className="editor-page">
@@ -219,7 +357,7 @@ function EditorSession({ taskId, imageIndexParam }: EditorSessionProps) {
       const objectUrl = URL.createObjectURL(blob)
       const downloadLink = document.createElement('a')
       downloadLink.href = objectUrl
-      downloadLink.download = `aigc-edited-${task.taskId}-${imageIndex}.png`
+      downloadLink.download = `aigc-edited-${activeTask.taskId}-${imageIndex}.png`
       document.body.append(downloadLink)
       downloadLink.click()
       downloadLink.remove()
@@ -233,41 +371,44 @@ function EditorSession({ taskId, imageIndexParam }: EditorSessionProps) {
   }
 
   const handleSaveToLibrary = async () => {
-    if (isSaving || !isCanvasReady || !imageCanvasRef.current) {
+    if (
+      localArtworkSaveStatus === 'saving' ||
+      !isCanvasReady ||
+      !imageCanvasRef.current
+    ) {
       return
     }
 
-    setIsSaving(true)
+    setLocalArtworkSaveStatus('saving')
     setSaveMessage(null)
-    setIsSaveError(false)
 
     try {
       const blob = await imageCanvasRef.current.exportImage()
-      const response = await fetch(
-        createApiUrl(`/api/generations/${task.taskId}/images/${imageIndex}/edits`),
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'image/png' },
-          body: blob,
-        },
-      )
-      const data = (await response.json()) as
-        | GenerationEditSaveSuccessResponse
-        | GenerationEditSaveErrorResponse
-
-      if (response.status === 201 && data.success) {
-        setSaveMessage('已保存到生成库')
-        setHasSavedEdit(true)
-        return
+      const createdAt = new Date()
+      const artwork: LocalArtwork = {
+        id: crypto.randomUUID(),
+        name: createArtworkName(createdAt),
+        blob,
+        mimeType: 'image/png',
+        createdAt: createdAt.toISOString(),
+        sourceType: isImportedAsset ? 'imported' : 'generated',
+        effectMode: editMode,
+        ...(isImportedAsset
+          ? {}
+          : {
+              sourceTaskId: activeTask.taskId,
+              sourceImageIndex: imageIndex,
+            }),
       }
 
-      setSaveMessage('message' in data ? data.message : '保存编辑图片失败')
-      setIsSaveError(true)
-    } catch {
-      setSaveMessage('保存编辑图片失败，请稍后重试')
-      setIsSaveError(true)
-    } finally {
-      setIsSaving(false)
+      await saveLocalArtwork(artwork)
+      setLocalArtworkSaveStatus('succeeded')
+      setSaveMessage('已保存到本地作品库')
+    } catch (cause: unknown) {
+      setLocalArtworkSaveStatus('failed')
+      setSaveMessage(
+        cause instanceof Error ? cause.message : '本地作品保存失败，请稍后重试',
+      )
     }
   }
 
@@ -280,7 +421,7 @@ function EditorSession({ taskId, imageIndexParam }: EditorSessionProps) {
       const objectUrl = URL.createObjectURL(video)
       const link = document.createElement('a')
       link.href = objectUrl
-      link.download = `aigc-color-ripple-${task.taskId}-${imageIndex}.webm`
+      link.download = `aigc-color-ripple-${activeTask.taskId}-${imageIndex}.webm`
       document.body.append(link)
       link.click()
       link.remove()
@@ -311,9 +452,9 @@ function EditorSession({ taskId, imageIndexParam }: EditorSessionProps) {
             className="save-image-button"
             type="button"
             onClick={() => void handleSaveToLibrary()}
-            disabled={!isCanvasReady || isSaving}
+            disabled={!isCanvasReady || localArtworkSaveStatus === 'saving'}
           >
-            {isSaving ? '保存中...' : '保存到生成库'}
+            {localArtworkSaveStatus === 'saving' ? '保存中...' : '保存到作品库'}
           </button>
           <button
             className="export-image-button"
@@ -324,16 +465,16 @@ function EditorSession({ taskId, imageIndexParam }: EditorSessionProps) {
             {isExporting ? '导出中...' : '导出图片'}
           </button>
           <Link className="library-create-link" to="/library">返回生成库</Link>
-          {hasSavedEdit && (
-            <Link className="view-library-link" to="/library">查看生成库</Link>
+          {localArtworkSaveStatus === 'succeeded' && (
+            <Link className="view-library-link" to="/library">查看作品库</Link>
           )}
           {exportMessage && (
             <p className="export-message" role="status">{exportMessage}</p>
           )}
           {saveMessage && (
             <p
-              className={isSaveError ? 'save-message is-error' : 'save-message'}
-              role={isSaveError ? 'alert' : 'status'}
+              className={localArtworkSaveStatus === 'failed' ? 'save-message is-error' : 'save-message'}
+              role={localArtworkSaveStatus === 'failed' ? 'alert' : 'status'}
             >
               {saveMessage}
             </p>
@@ -518,7 +659,7 @@ function EditorSession({ taskId, imageIndexParam }: EditorSessionProps) {
           <ImageCanvas
             ref={imageCanvasRef}
             imageUrl={imageUrl}
-            alt={`生成任务 ${task.taskId} 的第 ${imageIndex + 1} 张图片`}
+            alt={`${isImportedAsset ? '本地导入图片' : `生成任务 ${activeTask.taskId}`} 的第 ${imageIndex + 1} 张图片`}
             mode={editMode}
             blackWhiteIntensity={blackWhiteIntensity}
             gradientPosition={gradientPosition}
@@ -533,7 +674,7 @@ function EditorSession({ taskId, imageIndexParam }: EditorSessionProps) {
             colorRippleSpeed={colorRippleSpeed}
             colorRipplePlayId={colorRipplePlayId}
             isColorRipplePaused={isColorRipplePaused}
-            rainSeed={`${task.taskId}-${imageIndex}`}
+            rainSeed={`${activeTask.taskId}-${imageIndex}`}
             onGradientPositionChange={handleGradientPositionChange}
             onColorRipplePointChange={handleColorRipplePointChange}
             onColorRippleStateChange={handleColorRippleStateChange}
@@ -547,19 +688,19 @@ function EditorSession({ taskId, imageIndexParam }: EditorSessionProps) {
           <dl>
             <div>
               <dt>原始 Prompt</dt>
-              <dd>{task.request.prompt}</dd>
+              <dd>{activeTask.request.prompt}</dd>
             </div>
             <div>
               <dt>风格</dt>
-              <dd>{styleText[task.request.style]}</dd>
+              <dd>{styleText[activeTask.request.style]}</dd>
             </div>
             <div>
               <dt>图片比例</dt>
-              <dd>{task.request.aspectRatio}</dd>
+              <dd>{activeTask.request.aspectRatio}</dd>
             </div>
             <div>
               <dt>生成时间</dt>
-              <dd>{formatCreatedAt(task.createdAt)}</dd>
+              <dd>{formatCreatedAt(activeTask.createdAt)}</dd>
             </div>
           </dl>
         </aside>

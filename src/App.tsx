@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import './App.css'
 import { GenerationForm } from './components/GenerationForm'
 import { ResultPreview } from './components/ResultPreview'
@@ -13,6 +14,7 @@ import type {
   GenerationTaskQuerySuccessResponse,
 } from './types/generationApi'
 import type { GenerationFormData } from './types/generation'
+import { getReusedGenerationFormData } from './types/createPageLocation'
 
 const initialFormData: GenerationFormData = {
   prompt: '',
@@ -34,7 +36,9 @@ const isTerminalStatus = (status: GenerationTask['status']): boolean =>
   status === 'succeeded' || status === 'failed'
 
 function App() {
-  const [formData, setFormData] = useState(initialFormData)
+  const location = useLocation()
+  const reusedFormData = getReusedGenerationFormData(location.state, initialFormData)
+  const [formData, setFormData] = useState(() => reusedFormData ?? initialFormData)
   const [isGenerating, setIsGenerating] = useState(false)
   const [generationTask, setGenerationTask] = useState<GenerationTask | null>(null)
   const [generationError, setGenerationError] = useState<string | null>(null)
@@ -215,6 +219,7 @@ function App() {
         onChange={setFormData}
         onSubmit={handleSubmit}
         isGenerating={isGenerating}
+        reusedParametersLoaded={reusedFormData !== null}
       />
       <ResultPreview
         isGenerating={isGenerating}

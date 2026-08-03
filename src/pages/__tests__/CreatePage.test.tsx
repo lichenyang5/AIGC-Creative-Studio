@@ -85,9 +85,9 @@ const createFetchMock = (failure?: TaskFailure): ReturnType<typeof vi.fn<typeof 
     throw new Error(`Unexpected fetch: ${method} ${url}`)
   })
 
-const renderCreatePage = (): void => {
+const renderCreatePage = (locationState?: unknown): void => {
   render(
-    <MemoryRouter initialEntries={['/create']}>
+    <MemoryRouter initialEntries={[{ pathname: '/create', state: locationState }]}>
       <Routes>
         <Route element={<AppLayout />}>
           <Route path="/create" element={<App />} />
@@ -112,6 +112,34 @@ afterEach(() => {
 })
 
 describe('CreatePage generation failures', () => {
+  it('loads valid reused generation parameters without submitting a task', async () => {
+    const fetchMock = createFetchMock()
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderCreatePage({
+      reusedGenerationRequest: {
+        prompt: '复用的未来城市',
+        negativePrompt: '模糊',
+        aspectRatio: '16:9',
+        count: 2,
+        seed: 12345,
+        style: 'cyberpunk',
+      },
+    })
+
+    expect(await screen.findByText('已载入历史生成参数，可调整后重新生成')).toBeInTheDocument()
+    expect(screen.getByLabelText('Prompt')).toHaveValue('复用的未来城市')
+    expect(screen.getByLabelText(/Negative Prompt/)).toHaveValue('模糊')
+    expect(screen.getByLabelText('Seed')).toHaveValue(12345)
+    expect(screen.getByLabelText('风格预设')).toHaveValue('赛博朋克')
+    expect(screen.getByLabelText('16:9')).toBeChecked()
+    expect(screen.getByLabelText('2')).toBeChecked()
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      expect.stringMatching(/\/api\/generations$/),
+      expect.objectContaining({ method: 'POST' }),
+    )
+  })
+
   it('shows the backend task failure reason', async () => {
     const fetchMock = createFetchMock({
       code: 'DataInspectionFailed',
