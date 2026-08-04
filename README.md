@@ -175,3 +175,88 @@ npm run dev
 ## 当前范围
 
 项目当前聚焦单机本地开发与学习闭环。尚未实现云端对象存储、生产级部署、多实例任务队列、第三方 OAuth 登录、支付计费和团队协作等生产化能力。
+
+## 5 分钟功能演示
+
+完成启动后，可按下面的顺序演示完整链路。即使没有配置真实生图 Key，账号、数据库、鉴权、页面与本地导入能力仍可验证；真实生成仅需要额外开启 `ENABLE_REAL_GENERATION=true` 并填写自己的 DashScope Key。
+
+1. 打开前端地址，注册一个新的测试账号并登录。
+2. 在“图片创作”填写 Prompt，提交一条生成任务；页面会展示本地任务 ID 与 `pending / processing / succeeded / failed` 状态。
+3. 打开“生成库”，确认只展示当前账号的任务、原图与已保存的编辑作品。
+4. 对一张图片执行下载、进入编辑器、应用黑白/灰度渐变/雨滴/色彩涟漪效果，并将 PNG 保存回生成库。
+5. 切换到另一账号，确认无法查看、下载、编辑或删除前一账号的图片。
+6. 在生成库导入一张本地 PNG、JPEG 或 WebP 图片，刷新页面后仍可从浏览器 IndexedDB 打开编辑器；该导入素材不会上传到服务端。
+
+> 演示真实生成前，请确认 Provider 支持的尺寸映射已启用：`1:1 → 1024*1024`、`4:3 → 1152*864`、`3:4 → 864*1152`、`16:9 → 1280*720`。
+
+## 核心请求链路
+
+```text
+注册/登录
+  → HttpOnly Cookie + JWT
+  → POST /api/generations 创建 PostgreSQL 任务
+  → 后台调用 ImageGenerationProvider
+  → 下载 Provider 临时图片 URL 并保存至 server/storage/images
+  → 写入 images 元数据，任务更新为 succeeded/failed
+  → 前端轮询 GET /api/generations/:taskId
+  → 鉴权后的 GET /api/images/:filename 返回图片
+  → Canvas 编辑并将 PNG 保存回当前任务
+```
+
+数据库关系为：`users (1) → generation_tasks (N) → images (N)`。编辑图片可以通过 `source_image_id` 引用来源图片；删除原图不会联动删除已经保存的编辑作品。
+
+## 核心 API 一览
+
+所有图片库、任务查询和图片写入接口均要求登录。服务端从 JWT 中获取当前用户，不信任客户端传入的用户 ID。
+
+| 方法 | 地址 | 用途 |
+| --- | --- | --- |
+| `POST` | `/api/auth/register` | 注册账号 |
+| `POST` | `/api/auth/login` | 登录并写入会话 Cookie |
+| `POST` | `/api/auth/logout` | 清除会话 |
+| `GET` | `/api/auth/me` | 获取当前登录用户 |
+| `POST` | `/api/generations` | 创建图片生成任务，返回 `202` 与 taskId |
+| `GET` | `/api/generations/:taskId` | 查询任务状态和图片元数据 |
+| `GET` | `/api/generations` | 分页读取当前用户的生成库 |
+| `GET` | `/api/images/:filename` | 校验图片所有权后返回本地图片 |
+| `POST` | `/api/generations/:taskId/images/:imageIndex/edits` | 保存 Canvas 导出的 PNG |
+| `DELETE` | `/api/generations/:taskId/images/:imageIndex` | 删除单张图片及必要元数据 |
+
+## 验证与质量检查
+
+修改前端后，在根目录执行：
+
+```powershell
+npm run lint
+npm test
+npm run build
+```
+
+修改后端后，在 `server/` 目录执行：
+
+```powershell
+npm test
+npm run build
+```
+
+项目的自动化测试不请求真实 Wanx 服务：Provider 测试通过 Mock `fetch` 覆盖创建任务、轮询、失败、限流与超时；接口测试通过 Supertest 直接请求导出的 Express app，不监听真实端口。
+
+## 常见排错
+
+| 现象 | 优先检查 |
+| --- | --- |
+| 页面显示“服务未连接” | 后端是否运行在 `3001`，根目录 `.env` 的 `VITE_API_BASE_URL` 是否正确。 |
+| 登录后访问图片返回 401 | 浏览器 Cookie 是否存在；前后端 CORS 是否允许凭据；不要把受保护 Canvas 图片加载为 `anonymous`。 |
+| 生图失败且提示尺寸不支持 | 检查 Wanx Provider 的比例到尺寸映射，不要自行拼接 Provider 不允许的 size。 |
+| 数据库连接失败 | Docker 容器是否健康、`DATABASE_URL` 是否匹配用户/密码/端口、是否已执行 `schema.sql`。 |
+| 新电脑启动后没有旧图片或用户 | Docker Volume 和 `server/storage/images` 是本机数据，不随 Git 同步；重新初始化数据库并注册测试账号即可。 |
+| 本地导入图片刷新后消失 | 检查浏览器未禁用 IndexedDB；本地导入素材只保存在当前浏览器的本地数据库，不会同步到服务器。 |
+
+## 延伸阅读
+
+- [全栈闭环总览](docs/从图片创作到本地可复现的AIGC全栈闭环.md)
+- [图片生成异步任务设计](docs/从同步接口到异步任务：AIGC%20图片生成后端设计.md)
+- [PostgreSQL 用户、任务与图片关系建模](docs/PostgreSQL建模：从用户到图片库的关系设计.md)
+- [图片库鉴权与资源安全](docs/AIGC图片库鉴权与资源安全：从登录到文件访问.md)
+- [Canvas 图片编辑与雨滴效果实现](docs/Canvas图片编辑与雨滴效果实现复盘.md)
+- [全栈面试项目讲解稿](docs/全栈面试项目讲解：如何讲清AIGC%20Creative%20Studio.md)
