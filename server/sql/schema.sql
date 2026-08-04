@@ -70,3 +70,20 @@ CREATE INDEX IF NOT EXISTS images_generation_task_index
 
 CREATE UNIQUE INDEX IF NOT EXISTS images_generation_task_position_index
   ON images (generation_task_id, position);
+
+CREATE TABLE IF NOT EXISTS activity_logs (
+  id UUID PRIMARY KEY,
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  action VARCHAR(40) NOT NULL CHECK (action IN (
+    'generation_created',
+    'image_edited_saved',
+    'image_deleted',
+    'generation_deleted'
+  )),
+  generation_task_id UUID REFERENCES generation_tasks(id) ON DELETE SET NULL,
+  resource_label VARCHAR(255),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS activity_logs_user_created_at_index
+  ON activity_logs (user_id, created_at DESC);

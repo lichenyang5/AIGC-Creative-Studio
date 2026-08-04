@@ -4,6 +4,7 @@ import express, { Router } from 'express'
 import { requireAuth, type AuthenticatedRequest } from '../middleware/requireAuth.js'
 import { WanxImageProvider } from '../providers/WanxImageProvider.js'
 import { ProviderError, type GenerateImageInput } from '../providers/types.js'
+import { recordUserActivity } from '../repositories/activityRepository.js'
 import {
   deleteGenerationTaskFromPostgres,
   findGenerationTaskForUser,
@@ -83,6 +84,20 @@ const persistGenerationTask = async (task: GenerationTask): Promise<boolean> => 
   } catch {
     console.error('Unable to persist generation task to PostgreSQL')
     return false
+  }
+}
+
+/** 日志仅用于展示最近活动；记录失败不能回滚已经成功完成的主业务操作。 */
+const recordUserActivitySafely = async (
+  userId: string,
+  action: 'generation_created' | 'image_edited_saved' | 'image_deleted' | 'generation_deleted',
+  taskId: string | undefined,
+  resourceLabel: string,
+): Promise<void> => {
+  try {
+    await recordUserActivity({ userId, action, taskId, resourceLabel })
+  } catch {
+    console.error('Unable to record user activity')
   }
 }
 
@@ -374,6 +389,13 @@ generationsRouter.post('/', async (request: AuthenticatedRequest, response) => {
     return
   }
 
+  await recordUserActivitySafely(
+    userId,
+    'generation_created',
+    generationTask.taskId,
+    `生成任务 ${generationTask.taskId.slice(0, 8)}`,
+  )
+
   response.status(202).json(acceptedResponse)
   void runImageGeneration(generationTask)
 })
@@ -531,6 +553,13 @@ generationsRouter.post(
           throw new Error('Unable to persist edited image metadata')
         }
 
+        await recordUserActivitySafely(
+          userId,
+          'image_edited_saved',
+          taskId,
+          `保存编辑作品（图片 ${savedImageIndex + 1}）`,
+        )
+
         response.status(201).json({
           success: true,
           message: 'Edited image saved',
@@ -597,6 +626,12 @@ generationsRouter.delete('/:taskId/images/:imageIndex', async (request: Authenti
       }
 
       await deleteStoredImage(filename)
+      await recordUserActivitySafely(
+        userId,
+        'image_deleted',
+        taskId,
+        `删除图片 ${index + 1}`,
+      )
       response.status(200).json({
         success: true,
         message: 'Image deleted',
@@ -631,6 +666,12 @@ generationsRouter.delete('/:taskId', async (request: AuthenticatedRequest<{ task
 
   try {
     await deleteGenerationTaskFromPostgres(task.taskId, userId)
+    await recordUserActivitySafely(
+      userId,
+      'generation_deleted',
+      undefined,
+      `删除失败任务 ${task.taskId.slice(0, 8)}`,
+    )
     response.status(200).json({
       success: true,
       message: 'Generation task deleted',

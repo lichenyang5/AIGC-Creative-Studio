@@ -17,6 +17,11 @@ const databaseMocks = vi.hoisted(() => ({
   queryDatabase: vi.fn(),
 }))
 
+const activityRepositoryMocks = vi.hoisted(() => ({
+  listRecentActivitiesForUser: vi.fn(async () => []),
+  recordUserActivity: vi.fn<(input: unknown) => Promise<void>>(),
+}))
+
 const repositoryMocks = vi.hoisted(() => ({
   deleteGenerationTaskFromPostgres: vi.fn(async () => undefined),
   failInterruptedProcessingTasks: vi.fn(async () => 0),
@@ -35,6 +40,7 @@ const repositoryMocks = vi.hoisted(() => ({
 }))
 
 vi.mock('../database/database.js', () => databaseMocks)
+vi.mock('../repositories/activityRepository.js', () => activityRepositoryMocks)
 vi.mock('../repositories/postgresGenerationRepository.js', () => repositoryMocks)
 
 import { app } from '../app.js'
@@ -134,6 +140,10 @@ describe('authenticated generation flow', () => {
     })
     expect(createTaskResponse.status).toBe(202)
     expect(createTaskResponse.body.data).toMatchObject({ status: 'pending' })
+    expect(activityRepositoryMocks.recordUserActivity).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'generation_created',
+      userId: firstRegistration.body.data.user.id,
+    }))
 
     const taskId = String(createTaskResponse.body.data.taskId)
     const taskDetailResponse = await firstUser.get(`/api/generations/${taskId}`)

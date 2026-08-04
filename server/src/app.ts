@@ -4,6 +4,7 @@ import { readStoredImage } from './storage/localImageStorage.js'
 import { requireAuth, type AuthenticatedRequest } from './middleware/requireAuth.js'
 import { isStoredImageOwnedByUser } from './repositories/postgresGenerationRepository.js'
 import { authRouter } from './routes/auth.js'
+import { activityRouter } from './routes/activity.js'
 import { generationsRouter } from './routes/generations.js'
 
 /** Express 应用装配点：图片访问在此执行认证与资源归属校验，避免静态目录被公开暴露。 */
@@ -12,6 +13,7 @@ const app = express()
 app.use(cors({ origin: true, credentials: true }))
 app.use(express.json())
 app.use('/api/auth', authRouter)
+app.use('/api/activity-logs', activityRouter)
 
 app.get('/api/images/:filename', requireAuth, async (request: AuthenticatedRequest<{ filename: string }>, response) => {
   const userId = request.authUser?.sub

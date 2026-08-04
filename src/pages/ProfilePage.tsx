@@ -2,9 +2,9 @@
 import { useEffect, useState } from 'react'
 import { createApiUrl, createAuthHeaders } from '../config/api'
 import { useAuth } from '../contexts/authStore'
+import type { ActivityListResponse, UserActivity } from '../types/activity'
 import type {
   GenerationSummary,
-  GenerationSummaryErrorResponse,
   GenerationSummaryResponse,
 } from '../types/generationApi'
 
@@ -37,10 +37,35 @@ const getSummaryErrorMessage = (value: unknown, status: number): string => {
     && 'message' in value
     && typeof value.message === 'string'
   ) {
-    return (value as GenerationSummaryErrorResponse).message
+    return value.message
   }
 
   return `无法加载个人数据（HTTP ${status}）`
+}
+
+const isActivityListResponse = (value: unknown): value is ActivityListResponse =>
+  typeof value === 'object'
+  && value !== null
+  && 'success' in value
+  && value.success === true
+  && 'data' in value
+  && typeof value.data === 'object'
+  && value.data !== null
+  && 'items' in value.data
+  && Array.isArray(value.data.items)
+
+const activityText: Record<UserActivity['action'], string> = {
+  generation_created: '创建了图片生成任务',
+  image_edited_saved: '保存了编辑作品',
+  image_deleted: '删除了一张图片',
+  generation_deleted: '删除了失败任务',
+}
+
+const formatActivityTime = (value: string): string => {
+  const date = new Date(value)
+  return Number.isNaN(date.getTime())
+    ? '时间未知'
+    : date.toLocaleString('zh-CN', { hour12: false })
 }
 
 interface StatisticCardProps {
@@ -61,6 +86,7 @@ function StatisticCard({ label, value, tone }: StatisticCardProps) {
 export function ProfilePage() {
   const { user } = useAuth()
   const [summary, setSummary] = useState<GenerationSummary | null>(null)
+  const [activities, setActivities] = useState<UserActivity[] | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -68,17 +94,28 @@ export function ProfilePage() {
 
     const loadSummary = async () => {
       try {
-        const response = await fetch(createApiUrl('/api/generations/summary'), {
-          headers: createAuthHeaders(),
-          credentials: 'include',
-        })
-        const data: unknown = await response.json().catch(() => null)
-        if (!response.ok || !isGenerationSummaryResponse(data)) {
-          throw new Error(getSummaryErrorMessage(data, response.status))
+        const [summaryResponse, activityResponse] = await Promise.all([
+          fetch(createApiUrl('/api/generations/summary'), {
+            headers: createAuthHeaders(),
+            credentials: 'include',
+          }),
+          fetch(createApiUrl('/api/activity-logs'), {
+            headers: createAuthHeaders(),
+            credentials: 'include',
+          }),
+        ])
+        const summaryData: unknown = await summaryResponse.json().catch(() => null)
+        const activityData: unknown = await activityResponse.json().catch(() => null)
+        if (!summaryResponse.ok || !isGenerationSummaryResponse(summaryData)) {
+          throw new Error(getSummaryErrorMessage(summaryData, summaryResponse.status))
+        }
+        if (!activityResponse.ok || !isActivityListResponse(activityData)) {
+          throw new Error(getSummaryErrorMessage(activityData, activityResponse.status))
         }
 
         if (isMounted) {
-          setSummary(data.data)
+          setSummary(summaryData.data)
+          setActivities(activityData.data.items)
         }
       } catch (cause: unknown) {
         if (isMounted) {
@@ -108,7 +145,7 @@ export function ProfilePage() {
           <h3>数据加载失败</h3>
           <p>{error}</p>
         </section>
-      ) : !summary ? (
+      ) : !summary || !activities ? (
         <section className="profile-state" aria-live="polite">
           <span className="loading-spinner" aria-hidden="true" />
           <p>正在加载个人数据...</p>
@@ -124,6 +161,30 @@ export function ProfilePage() {
           <section className="profile-activity-note">
             <h3>任务状态</h3>
             <p>等待处理 {summary.pendingTasks} 个，生成中 {summary.processingTasks} 个。</p>
+          </section>
+          <section className="profile-activity-list" aria-labelledby="recent-activities-heading">
+            <div className="profile-activity-list-heading">
+              <div>
+                <p className="profile-eyebrow">最近活动</p>
+                <h3 id="recent-activities-heading">创作操作记录</h3>
+              </div>
+              <span>最近 8 条</span>
+            </div>
+            {activities.length === 0 ? (
+              <p className="profile-activity-empty">还没有操作记录，创建第一条生成任务后会显示在这里。</p>
+            ) : (
+              <ol>
+                {activities.map((activity) => (
+                  <li key={activity.id}>
+                    <div>
+                      <strong>{activityText[activity.action]}</strong>
+                      {activity.resourceLabel && <span>{activity.resourceLabel}</span>}
+                    </div>
+                    <time dateTime={activity.createdAt}>{formatActivityTime(activity.createdAt)}</time>
+                  </li>
+                ))}
+              </ol>
+            )}
           </section>
         </>
       )}
