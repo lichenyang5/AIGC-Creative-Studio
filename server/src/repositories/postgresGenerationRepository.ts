@@ -1,6 +1,6 @@
 /** 生成任务 Repository：使用同一只读事务快照查询任务和图片，position 保证 imageIndex 稳定。 */
 import { randomUUID } from 'node:crypto'
-import { getDatabasePool } from '../database/database.js'
+import { getDatabasePool, queryDatabase } from '../database/database.js'
 import { getStoredImageFilename } from '../storage/localImageStorage.js'
 import type {
   GenerationImage,
@@ -238,6 +238,33 @@ export const findGenerationTaskForUser = async (
 ): Promise<GenerationTask | undefined> => {
   const tasks = await queryGenerationTasks('id = $1 AND user_id = $2', [taskId, userId])
   return tasks[0]
+}
+
+/**
+ * Closes tasks that were executing when the Node.js process stopped.
+ *
+ * An in-process Provider call cannot be safely resumed after restart because
+ * its external execution context no longer exists in this application. Keeping
+ * the record as `processing` would make the UI poll forever, so startup
+ * reconciliation converts only that transient state into a visible failure.
+ */
+export const failInterruptedProcessingTasks = async (): Promise<number> => {
+  const result = await queryDatabase(
+    `UPDATE generation_tasks
+     SET status = $1,
+         error_code = $2,
+         error_message = $3,
+         completed_at = NOW()
+     WHERE status = $4`,
+    [
+      'failed',
+      'SERVER_RESTARTED',
+      'Image generation was interrupted because the server restarted. Please try again.',
+      'processing',
+    ],
+  )
+
+  return result.rowCount ?? 0
 }
 
 export const isStoredImageOwnedByUser = async (
