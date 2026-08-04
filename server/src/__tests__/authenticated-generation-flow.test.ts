@@ -21,9 +21,17 @@ const repositoryMocks = vi.hoisted(() => ({
   deleteGenerationTaskFromPostgres: vi.fn(async () => undefined),
   failInterruptedProcessingTasks: vi.fn(async () => 0),
   findGenerationTaskForUser: vi.fn(),
+  getGenerationSummaryForUser: vi.fn(async () => ({
+    totalTasks: 0,
+    succeededTasks: 0,
+    failedTasks: 0,
+    pendingTasks: 0,
+    processingTasks: 0,
+    imageCount: 0,
+  })),
   isStoredImageOwnedByUser: vi.fn(async () => false),
   listGenerationTasksForUser: vi.fn(),
-  saveGenerationTaskToPostgres: vi.fn(async (_task: unknown) => undefined),
+  saveGenerationTaskToPostgres: vi.fn<(task: unknown) => Promise<void>>(),
 }))
 
 vi.mock('../database/database.js', () => databaseMocks)

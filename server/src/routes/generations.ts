@@ -7,6 +7,7 @@ import { ProviderError, type GenerateImageInput } from '../providers/types.js'
 import {
   deleteGenerationTaskFromPostgres,
   findGenerationTaskForUser,
+  getGenerationSummaryForUser,
   listGenerationTasksForUser,
   saveGenerationTaskToPostgres,
 } from '../repositories/postgresGenerationRepository.js'
@@ -33,6 +34,7 @@ import {
   type GenerationStatus,
   type GenerationStyle,
   type GenerationImage,
+  type GenerationSummaryResponse,
   type GenerationTask,
   type GenerationTaskNotFoundResponse,
   type GenerationTaskResponse,
@@ -412,6 +414,25 @@ generationsRouter.get('/', async (request: AuthenticatedRequest, response) => {
   }
 
   response.status(200).json(listResponse)
+})
+
+/** 返回当前用户的任务与图片计数，供个人中心展示，不泄露其他用户数据。 */
+generationsRouter.get('/summary', async (request: AuthenticatedRequest, response) => {
+  const userId = request.authUser?.sub
+  if (!userId) {
+    response.status(401).json({ success: false, message: 'Authentication is required' })
+    return
+  }
+
+  try {
+    const summaryResponse: GenerationSummaryResponse = {
+      success: true,
+      data: await getGenerationSummaryForUser(userId),
+    }
+    response.status(200).json(summaryResponse)
+  } catch {
+    response.status(500).json({ success: false, message: 'Unable to load generation summary' })
+  }
 })
 
 generationsRouter.post(

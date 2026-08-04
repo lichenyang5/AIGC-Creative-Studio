@@ -113,3 +113,18 @@ export interface GenerationListResponse {
     hasMore: boolean
   }
 }
+
+/** 当前登录用户的生成库概览，只包含计数，不包含任务或图片二进制。 */
+export interface GenerationSummary {
+  totalTasks: number
+  succeededTasks: number
+  failedTasks: number
+  pendingTasks: number
+  processingTasks: number
+  imageCount: number
+}
+
+export interface GenerationSummaryResponse {
+  success: true
+  data: GenerationSummary
+}

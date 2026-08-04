@@ -14,6 +14,7 @@ import { AuthProvider } from './contexts/AuthContext.tsx'
 import { EditorPage } from './pages/EditorPage.tsx'
 import { LibraryPage } from './pages/LibraryPage.tsx'
 import { LoginPage } from './pages/LoginPage.tsx'
+import { ProfilePage } from './pages/ProfilePage.tsx'
 
 /** 应用入口：集中声明路由、公共布局和认证保护边界。 */
 createRoot(document.getElementById('root')!).render(
@@ -25,6 +26,7 @@ createRoot(document.getElementById('root')!).render(
         <Route element={<RequireAuth />}><Route element={<AppLayout />}>
           <Route path="/create" element={<CreatePage />} />
           <Route path="/library" element={<LibraryPage />} />
+          <Route path="/profile" element={<ProfilePage />} />
           <Route path="/editor/imported/:assetId" element={<EditorPage />} />
           <Route path="/editor/:taskId/:imageIndex" element={<EditorPage />} />
         </Route></Route>

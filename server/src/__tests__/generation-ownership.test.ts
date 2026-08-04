@@ -9,6 +9,14 @@ vi.hoisted(() => {
 const repositoryMocks = vi.hoisted(() => ({
   deleteGenerationTaskFromPostgres: vi.fn(async () => undefined),
   findGenerationTaskForUser: vi.fn(),
+  getGenerationSummaryForUser: vi.fn(async () => ({
+    totalTasks: 0,
+    succeededTasks: 0,
+    failedTasks: 0,
+    pendingTasks: 0,
+    processingTasks: 0,
+    imageCount: 0,
+  })),
   isStoredImageOwnedByUser: vi.fn(async () => false),
   listGenerationTasksForUser: vi.fn(),
   saveGenerationTaskToPostgres: vi.fn(async () => undefined),

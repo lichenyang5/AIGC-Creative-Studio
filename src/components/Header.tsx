@@ -55,7 +55,9 @@ export function Header({ serviceStatus }: HeaderProps) {
         <div className="header-actions">
           {user && (
             <div className="header-user-controls">
-              <span className="header-user-name">{user.displayName}</span>
+              <NavLink className="header-user-name" to="/profile">
+                {user.displayName}
+              </NavLink>
               <button className="header-logout-button" type="button" onClick={logout}>
                 退出
               </button>

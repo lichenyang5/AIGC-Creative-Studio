@@ -91,6 +91,25 @@ export interface GenerationListErrorResponse {
   message: string
 }
 
+export interface GenerationSummary {
+  totalTasks: number
+  succeededTasks: number
+  failedTasks: number
+  pendingTasks: number
+  processingTasks: number
+  imageCount: number
+}
+
+export interface GenerationSummaryResponse {
+  success: true
+  data: GenerationSummary
+}
+
+export interface GenerationSummaryErrorResponse {
+  success: false
+  message: string
+}
+
 export interface GenerationEditSaveSuccessResponse {
   success: true
   message: 'Edited image saved'

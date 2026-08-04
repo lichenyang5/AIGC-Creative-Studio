@@ -39,6 +39,15 @@ interface TaskOwnerRow {
   user_id: string
 }
 
+interface GenerationSummaryRow {
+  total_tasks: number
+  succeeded_tasks: number
+  failed_tasks: number
+  pending_tasks: number
+  processing_tasks: number
+  image_count: number
+}
+
 const upsertTask = `
   INSERT INTO generation_tasks (
     id, user_id, status, prompt, negative_prompt, aspect_ratio, image_count,
@@ -231,6 +240,41 @@ export const listGenerationTasksForUser = async (
   status === undefined ? 'user_id = $1' : 'user_id = $1 AND status = $2',
   status === undefined ? [userId] : [userId, status],
 )
+
+/** 按当前用户聚合任务和图片数量，避免个人中心加载完整图片库再在前端计数。 */
+export const getGenerationSummaryForUser = async (
+  userId: string,
+): Promise<{
+  totalTasks: number
+  succeededTasks: number
+  failedTasks: number
+  pendingTasks: number
+  processingTasks: number
+  imageCount: number
+}> => {
+  const result = await getDatabasePool().query<GenerationSummaryRow>(
+    `SELECT
+       COUNT(*)::integer AS total_tasks,
+       COUNT(*) FILTER (WHERE status = 'succeeded')::integer AS succeeded_tasks,
+       COUNT(*) FILTER (WHERE status = 'failed')::integer AS failed_tasks,
+       COUNT(*) FILTER (WHERE status = 'pending')::integer AS pending_tasks,
+       COUNT(*) FILTER (WHERE status = 'processing')::integer AS processing_tasks,
+       (SELECT COUNT(*)::integer FROM images WHERE user_id = $1) AS image_count
+     FROM generation_tasks
+     WHERE user_id = $1`,
+    [userId],
+  )
+  const summary = result.rows[0]
+
+  return {
+    totalTasks: summary?.total_tasks ?? 0,
+    succeededTasks: summary?.succeeded_tasks ?? 0,
+    failedTasks: summary?.failed_tasks ?? 0,
+    pendingTasks: summary?.pending_tasks ?? 0,
+    processingTasks: summary?.processing_tasks ?? 0,
+    imageCount: summary?.image_count ?? 0,
+  }
+}
 
 export const findGenerationTaskForUser = async (
   taskId: string,
