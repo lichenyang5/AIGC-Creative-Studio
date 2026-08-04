@@ -7,8 +7,8 @@ import { failInterruptedProcessingTasks } from './repositories/postgresGeneratio
 /** 服务进程入口：只负责读取本机环境变量并监听端口，Express 配置位于 app.ts，便于测试直接导入。 */
 const currentDirectory = dirname(fileURLToPath(import.meta.url))
 
-// Resolve from this file so `node server/dist/index.js` and `npm run dev`
-// consistently load server/.env instead of relying on the caller's cwd.
+// 以当前文件为基准解析路径，确保 `node server/dist/index.js` 与 `npm run dev`
+// 都稳定加载 server/.env，而不依赖调用命令时所在的工作目录。
 dotenv.config({ path: resolve(currentDirectory, '../.env') })
 
 const port = Number(process.env.PORT) || 3001
@@ -20,8 +20,7 @@ const reconcileInterruptedGenerationTasks = async (): Promise<void> => {
       console.warn(`Marked ${recoveredTaskCount} interrupted generation task(s) as failed`)
     }
   } catch {
-    // Do not prevent the health endpoint and login flow from starting when the
-    // database is temporarily unavailable. The failure contains no secrets.
+    // 数据库暂时不可用时，不阻止健康检查和登录流程启动；日志不包含连接串或密钥。
     console.error('Unable to reconcile interrupted generation tasks at startup')
   }
 }

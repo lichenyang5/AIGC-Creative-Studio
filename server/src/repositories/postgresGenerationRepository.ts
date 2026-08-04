@@ -241,12 +241,11 @@ export const findGenerationTaskForUser = async (
 }
 
 /**
- * Closes tasks that were executing when the Node.js process stopped.
+ * 收敛 Node.js 进程停止时仍在执行的生成任务。
  *
- * An in-process Provider call cannot be safely resumed after restart because
- * its external execution context no longer exists in this application. Keeping
- * the record as `processing` would make the UI poll forever, so startup
- * reconciliation converts only that transient state into a visible failure.
+ * 进程内的 Provider 调用在重启后没有可恢复的外部执行上下文。若继续保留
+ * `processing` 状态，前端会永久轮询；因此启动时只将这一瞬时状态转换为
+ * 用户可见的失败状态。
  */
 export const failInterruptedProcessingTasks = async (): Promise<number> => {
   const result = await queryDatabase(
