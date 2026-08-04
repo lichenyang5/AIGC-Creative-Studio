@@ -200,7 +200,10 @@ export const ImageCanvas = forwardRef<ImageCanvasHandle, ImageCanvasProps>(
     imageRef.current = image
     originalImageDataRef.current = null
     onLoadStateChange(false)
-    image.crossOrigin = 'anonymous'
+    // 生成图片由独立的 API 服务提供，且 /api/images 需要登录 Cookie。
+    // anonymous 不会携带 Cookie，Canvas 会在图片接口返回 401 时触发 onerror。
+    // use-credentials 同时保留 CORS 可读性，避免 drawImage 后画布被污染。
+    image.crossOrigin = 'use-credentials'
     image.onload = () => {
       if (!isActive || !canvasRef.current) {
         return
