@@ -4,6 +4,12 @@
 
 本项目面向本地学习、作品集展示和全栈面试案例，不包含生产环境部署方案。
 
+## 项目演示视频
+
+[![AIGC Creative Studio 项目演示封面](docs/demo/DemoCover.png)](https://www.bilibili.com/video/BV1q6Mr6vEAr/)
+
+> 点击封面观看 Bilibili 演示视频，包含登录、真实图片生成、生成库、Canvas 编辑、作品保存与个人中心等完整流程。
+
 ## 功能概览
 
 - 用户注册、登录、退出，以及按用户隔离的生成库
