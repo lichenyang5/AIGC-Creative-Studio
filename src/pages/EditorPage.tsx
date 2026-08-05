@@ -429,11 +429,16 @@ function EditorSession({ taskId, imageIndexParam, assetId }: EditorSessionProps)
     setIsDynamicExporting(true)
     setDynamicExportMessage(null)
     try {
-      const video = await imageCanvasRef.current.exportColorRippleVideo()
+      const isRainVideo = editMode === 'rain'
+      const video = isRainVideo
+        ? await imageCanvasRef.current.exportRainVideo()
+        : await imageCanvasRef.current.exportColorRippleVideo()
       const objectUrl = URL.createObjectURL(video)
       const link = document.createElement('a')
       link.href = objectUrl
-      link.download = `aigc-color-ripple-${activeTask.taskId}-${imageIndex}.webm`
+      link.download = isRainVideo
+        ? `aigc-rain-${activeTask.taskId}-${imageIndex}.webm`
+        : `aigc-color-ripple-${activeTask.taskId}-${imageIndex}.webm`
       document.body.append(link)
       link.click()
       link.remove()
@@ -443,6 +448,8 @@ function EditorSession({ taskId, imageIndexParam, assetId }: EditorSessionProps)
       setDynamicExportMessage(
         cause instanceof Error && cause.message === 'No video data'
           ? '未生成有效的视频文件'
+          : cause instanceof Error && cause.message === 'Rain preview must be playing'
+            ? '请先播放雨滴，再导出动态视频'
           : cause instanceof Error && cause.message === 'Dynamic export is not supported'
             ? '当前浏览器不支持动态效果导出，请使用最新版 Chrome 或 Edge'
             : '动态效果导出超时，请降低动画时长后重试',
@@ -595,6 +602,16 @@ function EditorSession({ taskId, imageIndexParam, assetId }: EditorSessionProps)
               >
                 {isRainPlaying ? '暂停雨滴' : '播放雨滴'}
               </button>
+              <button
+                type="button"
+                className="dynamic-export-button"
+                onClick={() => void handleDynamicExport()}
+                disabled={!isCanvasReady || isDynamicExporting || !isRainPlaying}
+              >
+                {isDynamicExporting ? '正在录制...' : '导出雨滴视频'}
+              </button>
+              <p className="dynamic-export-note">播放雨滴后可导出当前动画为 WebM 视频</p>
+              {dynamicExportMessage && <p className="dynamic-export-message" role="status">{dynamicExportMessage}</p>}
             </section>
           )}
           <button
@@ -653,7 +670,7 @@ function EditorSession({ taskId, imageIndexParam, assetId }: EditorSessionProps)
               <button type="button" className="rain-play-button" onClick={() => setIsColorRipplePaused((value) => !value)} disabled={colorRippleState !== 'dropping' && colorRippleState !== 'rippling'}>{isColorRipplePaused ? '继续播放' : '暂停效果'}</button>
               <button type="button" className="rain-play-button" onClick={() => { setIsColorRipplePaused(false); setColorRipplePlayId((value) => value + 1) }}>重新播放</button>
               <button type="button" className="dynamic-export-button" onClick={() => void handleDynamicExport()} disabled={!isCanvasReady || isDynamicExporting}> {isDynamicExporting ? '正在录制...' : '导出动态效果'} </button>
-              <p className="dynamic-export-note">导出雨滴与涟漪动画为 WebM 视频</p>
+              <p className="dynamic-export-note">导出色彩涟漪动画为 WebM 视频</p>
               {dynamicExportMessage && <p className="dynamic-export-message" role="status">{dynamicExportMessage}</p>}
             </section>
           )}

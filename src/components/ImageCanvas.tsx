@@ -37,6 +37,7 @@ interface ImageCanvasProps {
 export interface ImageCanvasHandle {
   exportImage: () => Promise<Blob>
   exportColorRippleVideo: () => Promise<Blob>
+  exportRainVideo: () => Promise<Blob>
 }
 
 export type ImageEditMode = 'original' | 'grayscale' | 'gradient' | 'rain' | 'colorRipple'
@@ -836,6 +837,79 @@ export const ImageCanvas = forwardRef<ImageCanvasHandle, ImageCanvasProps>(
       notifyColorRippleState,
     ])
 
+  /**
+   * 录制当前正在运行的雨滴预览为短 WebM。
+   * 雨滴 RAF 本身持续更新 Canvas，因此只捕获同一个画布即可避免复制动画逻辑。
+   */
+  const exportRainVideo = useCallback((): Promise<Blob> =>
+    new Promise<Blob>((resolve, reject) => {
+      const canvas = canvasRef.current
+      if (
+        mode !== 'rain'
+        || !isRainPlaying
+        || !canvas
+        || typeof canvas.captureStream !== 'function'
+        || typeof MediaRecorder === 'undefined'
+      ) {
+        reject(new Error('Rain preview must be playing'))
+        return
+      }
+
+      const mimeType = [
+        'video/webm;codecs=vp9',
+        'video/webm;codecs=vp8',
+        'video/webm',
+      ].find((type) => MediaRecorder.isTypeSupported(type))
+      if (!mimeType) {
+        reject(new Error('Dynamic export is not supported'))
+        return
+      }
+
+      const stream = canvas.captureStream(30)
+      const recorder = new MediaRecorder(stream, {
+        mimeType,
+        videoBitsPerSecond: canvas.width * canvas.height > 1280 * 720 ? 8_000_000 : 4_000_000,
+      })
+      const chunks: Blob[] = []
+      let timeoutId: number | null = null
+      let stopped = false
+
+      const cleanup = (): void => {
+        stream.getTracks().forEach((track) => track.stop())
+        if (timeoutId !== null) window.clearTimeout(timeoutId)
+        recordingCleanupRef.current = null
+      }
+      const stopRecorder = (): void => {
+        if (stopped) return
+        stopped = true
+        if (recorder.state !== 'inactive') recorder.stop()
+      }
+
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) chunks.push(event.data)
+      }
+      recorder.onerror = () => {
+        cleanup()
+        reject(new Error('Dynamic export failed'))
+      }
+      recorder.onstop = () => {
+        const video = new Blob(chunks, { type: mimeType })
+        cleanup()
+        if (video.size === 0) {
+          reject(new Error('No video data'))
+          return
+        }
+        resolve(video)
+      }
+
+      recordingCleanupRef.current = () => {
+        stopRecorder()
+        cleanup()
+      }
+      recorder.start()
+      timeoutId = window.setTimeout(stopRecorder, 4_000)
+    }), [isRainPlaying, mode])
+
   /** 导出当前 Canvas 像素为 PNG；雨滴和涟漪动画会自然捕获调用时的当前帧。 */
   const exportImage = useCallback(
     (): Promise<Blob> =>
@@ -864,8 +938,9 @@ export const ImageCanvas = forwardRef<ImageCanvasHandle, ImageCanvasProps>(
     () => ({
       exportImage,
       exportColorRippleVideo,
+      exportRainVideo,
     }),
-    [exportColorRippleVideo, exportImage],
+    [exportColorRippleVideo, exportImage, exportRainVideo],
   )
 
   /**

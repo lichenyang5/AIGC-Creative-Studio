@@ -49,6 +49,20 @@ export function LocalArtworkCard({ artwork, onDeleted }: LocalArtworkCardProps) 
     window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 0)
   }
 
+  /** 新窗口使用独立 Blob URL，避免卡片预览 URL 在列表刷新或卸载后失效。 */
+  const handleOpenInNewWindow = () => {
+    const previewWindow = window.open('', '_blank')
+    if (!previewWindow) {
+      setError('无法打开新窗口，请检查浏览器是否拦截了弹窗')
+      return
+    }
+
+    const viewUrl = URL.createObjectURL(artwork.blob)
+    previewWindow.opener = null
+    previewWindow.location.replace(viewUrl)
+    window.setTimeout(() => URL.revokeObjectURL(viewUrl), 60_000)
+  }
+
   const handleDelete = async () => {
     if (isDeleting) return
 
@@ -82,7 +96,7 @@ export function LocalArtworkCard({ artwork, onDeleted }: LocalArtworkCardProps) 
         </dl>
         <div className="library-card-actions local-artwork-actions">
           <button type="button" className="image-action-button" onClick={handleDownload}>下载</button>
-          <a className="image-action-button image-action-link" href={previewUrl} target="_blank" rel="noreferrer">新窗口查看</a>
+          <button type="button" className="image-action-button" onClick={handleOpenInNewWindow}>新窗口查看</button>
           <Link className="image-action-button image-action-link" to={`/editor/local-artwork-${artwork.id}/0`}>进入编辑</Link>
           <button type="button" className="delete-image-button" onClick={() => setIsConfirming(true)} disabled={isDeleting}>
             {isDeleting ? '删除中...' : '删除'}
